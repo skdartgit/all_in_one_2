@@ -1,0 +1,48 @@
+name: Build Debug APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+
+  build-debug-apk:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Verify Java and Gradle
+        run: |
+          java -version
+          ./gradlew --version
+
+      - name: Build debug APK
+        run: |
+          ./gradlew :app:assembleDebug \
+            --no-daemon \
+            --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: all_in_one-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
