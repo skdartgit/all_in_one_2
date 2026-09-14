@@ -1495,11 +1495,15 @@ class MainActivity : Activity() {
         rv.adapter =
             NoteAdapter(list)
 
+        // Let the RecyclerView use only the height required by its content.
+        // The page's outer ScrollView handles vertical scrolling.
+        rv.isNestedScrollingEnabled = false
+
         content.addView(
             rv,
             LinearLayout.LayoutParams(
                 -1,
-                dp(500)
+                -2
             )
         )
 
@@ -1930,11 +1934,15 @@ class MainActivity : Activity() {
 
         rv.adapter = ad
 
+        // Let the RecyclerView use only the height required by its content.
+        // The page's outer ScrollView handles vertical scrolling.
+        rv.isNestedScrollingEnabled = false
+
         content.addView(
             rv,
             LinearLayout.LayoutParams(
                 -1,
-                dp(500)
+                -2
             )
         )
 
@@ -2294,11 +2302,15 @@ class MainActivity : Activity() {
 
         rv.adapter = ad
 
+        // Let the RecyclerView use only the height required by its content.
+        // The page's outer ScrollView handles vertical scrolling.
+        rv.isNestedScrollingEnabled = false
+
         content.addView(
             rv,
             LinearLayout.LayoutParams(
                 -1,
-                dp(500)
+                -2
             )
         )
 
@@ -2512,11 +2524,15 @@ class MainActivity : Activity() {
 
         rv.adapter = ad
 
+        // Let the RecyclerView use only the height required by its content.
+        // The page's outer ScrollView handles vertical scrolling.
+        rv.isNestedScrollingEnabled = false
+
         content.addView(
             rv,
             LinearLayout.LayoutParams(
                 -1,
-                dp(500)
+                -2
             )
         )
 
