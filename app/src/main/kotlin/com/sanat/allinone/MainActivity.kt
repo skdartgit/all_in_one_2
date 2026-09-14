@@ -1297,12 +1297,115 @@ class MainActivity : Activity() {
             edit(
                 "PIN"
             )
-
+        
         pin.inputType =
-            android.text.InputType.TYPE_CLASS_NUMBER or
-            android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-
+            android.text.InputType.TYPE_CLASS_NUMBER
+        
         pin.setSingleLine()
+        
+        pin.transformationMethod =
+            object : android.text.method.TransformationMethod {
+        
+                private var visibleUntil = 0L
+        
+                override fun getTransformation(
+                    source: CharSequence?,
+                    view: View?
+                ): CharSequence {
+        
+                    if (source == null) {
+                        return ""
+                    }
+        
+                    return object : CharSequence {
+        
+                        override val length: Int
+                            get() = source.length
+        
+                        override fun get(index: Int): Char {
+                            val now =
+                                android.os.SystemClock.uptimeMillis()
+        
+                            val lastIndex =
+                                source.length - 1
+        
+                            return if (
+                                index == lastIndex &&
+                                now < visibleUntil
+                            ) {
+                                source[index]
+                            } else {
+                                '*'
+                            }
+                        }
+        
+                        override fun subSequence(
+                            startIndex: Int,
+                            endIndex: Int
+                        ): CharSequence {
+        
+                            val result =
+                                StringBuilder()
+        
+                            for (
+                                i in startIndex until endIndex
+                            ) {
+                                result.append(get(i))
+                            }
+        
+                            return result.toString()
+                        }
+        
+                        override fun toString(): String {
+                            return subSequence(
+                                0,
+                                length
+                            ).toString()
+                        }
+                    }
+                }
+        
+                override fun onFocusChanged(
+                    view: View?,
+                    sourceText: CharSequence?,
+                    focused: Boolean,
+                    direction: Int,
+                    previouslyFocusedRect: android.graphics.Rect?
+                ) {
+                }
+            }
+        
+        pin.addTextChangedListener(
+            object : android.text.TextWatcher {
+        
+                override fun beforeTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    count: Int,
+                    after: Int
+                ) {
+                }
+        
+                override fun onTextChanged(
+                    s: CharSequence?,
+                    start: Int,
+                    before: Int,
+                    count: Int
+                ) {
+                    pin.postDelayed(
+                        {
+                            pin.invalidate()
+                        },
+                        1000
+                    )
+                }
+        
+                override fun afterTextChanged(
+                    s: android.text.Editable?
+                ) {
+                }
+            }
+        )
 
         box.addView(
             pin,
