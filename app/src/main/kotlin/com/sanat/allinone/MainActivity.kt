@@ -604,6 +604,18 @@ private class CodeEditText(
 
     private var busy = false
 
+    /*
+     * IMPORTANT:
+     * Once the user manually scrolls the code editor, Android must NOT
+     * automatically move the editor back to the cursor position while
+     * syntax highlighting or typing is happening.
+     */
+    private var userHasScrolled = false
+    private var touchDownY = 0f
+    private var dragging = false
+    private val touchSlop =
+        ViewConfiguration.get(c).scaledTouchSlop
+
     private val kw =
         Regex(
             "\\b(fun|val|var|class|object|interface|if|else|when|for|while|return|import|package|public|private|protected|static|void|new|try|catch|finally|throw|throws|extends|implements|def|lambda|True|False|None|print|function|const|let|async|await|return|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE)\\b"
@@ -715,6 +727,90 @@ private class CodeEditText(
         )
     }
 
+    /*
+     * Let this editor own vertical/horizontal scrolling while the finger
+     * is inside it. This prevents the dialog's ScrollView from fighting
+     * with the code editor.
+     */
+    override fun onTouchEvent(
+        event: MotionEvent
+    ): Boolean {
+
+        when (event.actionMasked) {
+
+            MotionEvent.ACTION_DOWN -> {
+                touchDownY = event.y
+                dragging = false
+
+                parent?.requestDisallowInterceptTouchEvent(
+                    true
+                )
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+
+                if (
+                    !dragging &&
+                    kotlin.math.abs(
+                        event.y - touchDownY
+                    ) > touchSlop
+                ) {
+                    dragging = true
+                    userHasScrolled = true
+                }
+
+                parent?.requestDisallowInterceptTouchEvent(
+                    true
+                )
+            }
+
+            MotionEvent.ACTION_UP,
+            MotionEvent.ACTION_CANCEL -> {
+                parent?.requestDisallowInterceptTouchEvent(
+                    false
+                )
+            }
+        }
+
+        return super.onTouchEvent(event)
+    }
+
+    /*
+     * Android normally tries to bring the cursor into view after every
+     * text change. That is what causes the annoying jump to the bottom.
+     *
+     * Before the user manually scrolls, normal Android behaviour is kept.
+     * After a manual scroll, the current viewport is locked until the user
+     * changes it manually again.
+     */
+    override fun bringPointIntoView(
+        offset: Int
+    ): Boolean {
+
+        if (userHasScrolled) {
+            return true
+        }
+
+        return super.bringPointIntoView(
+            offset
+        )
+    }
+
+    override fun requestRectangleOnScreen(
+        rectangle: Rect,
+        immediate: Boolean
+    ): Boolean {
+
+        if (userHasScrolled) {
+            return true
+        }
+
+        return super.requestRectangleOnScreen(
+            rectangle,
+            immediate
+        )
+    }
+
     fun highlight() {
 
         if (busy) {
@@ -787,9 +883,6 @@ private class CodeEditText(
         val pos =
             selectionStart
 
-        // Remember where the user was looking. Re-applying the
-        // highlighted Spannable must not force the editor back
-        // to the cursor/bottom on every keystroke.
         val oldScrollX =
             scrollX
 
@@ -809,14 +902,18 @@ private class CodeEditText(
             )
         )
 
+        busy = false
+
+        /*
+         * setText() can reset the internal EditText scroll position.
+         * Restore exactly the position the user had chosen.
+         */
         post {
             scrollTo(
                 oldScrollX,
                 oldScrollY
             )
         }
-
-        busy = false
     }
 }
 
@@ -1941,35 +2038,34 @@ class MainActivity : Activity() {
         old: CodeItem?
     ) {
 
-        // The dialog itself is scrollable so a long description
-        // cannot hide the Original Code field behind the keyboard.
+        /*
+         * One vertical ScrollView belongs to the dialog.
+         *
+         * Title + description + language can therefore become as long as
+         * needed without hiding the Original Code field.
+         *
+         * The CodeEditText itself remains a fixed-height, independently
+         * scrollable editor.
+         */
         val scroll =
             ScrollView(this).apply {
-                isFillViewport = false
+                isFillViewport = true
                 overScrollMode =
                     View.OVER_SCROLL_IF_CONTENT_SCROLLS
             }
 
         val box =
-            LinearLayout(this)
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
 
-        box.orientation =
-            LinearLayout.VERTICAL
-
-        box.setPadding(
-            dp(8),
-            0,
-            dp(8),
-            dp(8)
-        )
-
-        scroll.addView(
-            box,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+                setPadding(
+                    dp(8),
+                    0,
+                    dp(8),
+                    dp(8)
+                )
+            }
 
         val title =
             edit(
@@ -2013,6 +2109,7 @@ class MainActivity : Activity() {
             )
 
         old?.let {
+
             spinner.setSelection(
                 langs.indexOf(
                     it.lang
@@ -2031,104 +2128,142 @@ class MainActivity : Activity() {
 
         code.layoutParams =
             LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
+                -1,
                 dp(360)
-            )
+            ).apply {
+                topMargin = dp(6)
+            }
 
         box.addView(title)
         box.addView(desc)
         box.addView(spinner)
         box.addView(code)
 
-        // When Original Code receives focus, bring that section
-        // above the keyboard so it can actually be edited.
+        scroll.addView(
+            box,
+            ViewGroup.LayoutParams(
+                -1,
+                -2
+            )
+        )
+
+        val dialog =
+            AlertDialog.Builder(this)
+                .setTitle(
+                    if (old == null)
+                        "Write Code"
+                    else
+                        "Edit Code"
+                )
+                .setView(scroll)
+                .setPositiveButton("Save") { _, _ ->
+
+                    var name =
+                        title.text.toString()
+                            .trim()
+
+                    if (name.isBlank()) {
+
+                        name =
+                            desc.text.toString()
+                                .trim()
+                                .split(
+                                    Regex("\\s+")
+                                )
+                                .take(6)
+                                .joinToString(" ")
+                                .ifBlank {
+                                    "Untitled Code"
+                                }
+                    }
+
+                    val l =
+                        store.codes()
+
+                    if (old == null) {
+
+                        l.add(
+                            CodeItem(
+                                store.id("code"),
+                                name,
+                                desc.text.toString(),
+                                spinner.selectedItem.toString(),
+                                code.text.toString()
+                            )
+                        )
+
+                    } else {
+
+                        old.title = name
+
+                        old.desc =
+                            desc.text.toString()
+
+                        old.lang =
+                            spinner.selectedItem
+                                .toString()
+
+                        old.code =
+                            code.text.toString()
+
+                        val idx =
+                            l.indexOfFirst {
+                                it.id == old.id
+                            }
+
+                        if (idx >= 0) {
+                            l[idx] = old
+                        }
+                    }
+
+                    store.saveCodes(l)
+
+                    codesPage()
+                }
+                .setNegativeButton(
+                    "Cancel",
+                    null
+                )
+                .create()
+
+        /*
+         * ADJUST_RESIZE prevents the keyboard from panning the entire
+         * dialog unpredictably. The dialog gets a smaller viewport and
+         * its ScrollView handles the content.
+         */
+        dialog.setOnShowListener {
+
+            dialog.window?.setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+            )
+        }
+
+        /*
+         * When the user enters the Original Code field, make sure the
+         * dialog's OUTER scroll reaches the code editor. After that,
+         * CodeEditText controls its own scrolling.
+         */
         code.setOnFocusChangeListener { _, hasFocus ->
+
             if (hasFocus) {
+
                 scroll.post {
-                    scroll.smoothScrollTo(
-                        0,
-                        code.bottom
+                    scroll.fullScroll(
+                        View.FOCUS_DOWN
                     )
                 }
+
+                scroll.postDelayed({
+
+                    scroll.fullScroll(
+                        View.FOCUS_DOWN
+                    )
+
+                }, 200)
             }
         }
 
-        AlertDialog.Builder(this)
-            .setTitle(
-                if (old == null)
-                    "Write Code"
-                else
-                    "Edit Code"
-            )
-            .setView(scroll)
-            .setPositiveButton("Save") { _, _ ->
-
-                var name =
-                    title.text.toString()
-                        .trim()
-
-                if (name.isBlank()) {
-                    name =
-                        desc.text.toString()
-                            .trim()
-                            .split(
-                                Regex("\\s+")
-                            )
-                            .take(6)
-                            .joinToString(" ")
-                            .ifBlank {
-                                "Untitled Code"
-                            }
-                }
-
-                val l =
-                    store.codes()
-
-                if (old == null) {
-
-                    l.add(
-                        CodeItem(
-                            store.id("code"),
-                            name,
-                            desc.text.toString(),
-                            spinner.selectedItem.toString(),
-                            code.text.toString()
-                        )
-                    )
-
-                } else {
-
-                    old.title = name
-
-                    old.desc =
-                        desc.text.toString()
-
-                    old.lang =
-                        spinner.selectedItem
-                            .toString()
-
-                    old.code =
-                        code.text.toString()
-
-                    val idx =
-                        l.indexOfFirst {
-                            it.id == old.id
-                        }
-
-                    if (idx >= 0) {
-                        l[idx] = old
-                    }
-                }
-
-                store.saveCodes(l)
-
-                codesPage()
-            }
-            .setNegativeButton(
-                "Cancel",
-                null
-            )
-            .show()
+        dialog.show()
     }
 
     // --------------------------------------------------------
