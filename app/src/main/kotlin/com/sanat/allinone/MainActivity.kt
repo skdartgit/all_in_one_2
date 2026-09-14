@@ -2231,12 +2231,9 @@ class MainActivity : Activity() {
         initial: String,
         minLines: Int
     ): Pair<LinearLayout, EditText> {
-
         val root =
             LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.VERTICAL
-
+                orientation = LinearLayout.VERTICAL
                 setPadding(
                     dp(4),
                     dp(4),
@@ -2247,19 +2244,297 @@ class MainActivity : Activity() {
 
         val toolbar =
             LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.HORIZONTAL
+                orientation = LinearLayout.HORIZONTAL
             }
+
+        val editor =
+            EditText(this).apply {
+                setText(
+                    descriptionToSpanned(initial),
+                    TextView.BufferType.SPANNABLE
+                )
+                setTextSize(14f)
+                setTextColor(Color.DKGRAY)
+                gravity = Gravity.TOP or Gravity.START
+                this.minLines = minLines
+                maxLines = 10
+                inputType =
+                    android.text.InputType.TYPE_CLASS_TEXT or
+                    android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                    android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                setPadding(
+                    dp(12),
+                    dp(10),
+                    dp(12),
+                    dp(10)
+                )
+            }
+
+        /*
+         * The toolbar buttons can take focus away from the editor.
+         * Therefore the selection is remembered on ACTION_DOWN, before
+         * the button gets a chance to change the editor selection.
+         */
+        var savedStart = 0
+        var savedEnd = 0
+
+        fun rememberSelection() {
+            val len = editor.length()
+            savedStart =
+                editor.selectionStart.coerceIn(0, len)
+            savedEnd =
+                editor.selectionEnd.coerceIn(0, len)
+        }
+
+        /*
+         * Apply formatting to the selected text.
+         * If there is no selection, format the complete current line.
+         *
+         * Single tap  -> apply formatting.
+         * Double tap  -> remove that formatting.
+         *
+         * B     : bold
+         * U     : underline
+         * B + U : bold + underline
+         */
+        fun applyFormatting(
+            bold: Boolean,
+            underline: Boolean,
+            remove: Boolean
+        ) {
+            val e = editor.text ?: return
+
+            if (e.isEmpty()) {
+                return
+            }
+
+            val rawStart =
+                savedStart.coerceIn(0, e.length)
+            val rawEnd =
+                savedEnd.coerceIn(0, e.length)
+
+            val hasSelection =
+                rawStart != rawEnd
+
+            val start: Int
+            val end: Int
+
+            if (hasSelection) {
+                start = minOf(rawStart, rawEnd)
+                end = maxOf(rawStart, rawEnd)
+            } else {
+                val cursor = rawStart
+
+                start =
+                    e.toString()
+                        .lastIndexOf(
+                            '\n',
+                            (cursor - 1)
+                                .coerceAtLeast(0)
+                        )
+                        .let {
+                            if (it < 0) 0 else it + 1
+                        }
+
+                val foundEnd =
+                    e.toString().indexOf(
+                        '\n',
+                        cursor
+                    )
+
+                end =
+                    if (foundEnd < 0)
+                        e.length
+                    else
+                        foundEnd
+            }
+
+            if (start >= end) {
+                return
+            }
+
+            if (bold) {
+                val spans =
+                    e.getSpans(
+                        start,
+                        end,
+                        android.text.style.StyleSpan::class.java
+                    )
+
+                if (remove) {
+                    spans.forEach { span ->
+                        if (
+                            span.style == Typeface.BOLD ||
+                            span.style == Typeface.BOLD_ITALIC
+                        ) {
+                            val spanStart =
+                                e.getSpanStart(span)
+                            val spanEnd =
+                                e.getSpanEnd(span)
+
+                            if (
+                                spanStart <= start &&
+                                spanEnd >= end
+                            ) {
+                                e.removeSpan(span)
+
+                                if (spanStart < start) {
+                                    e.setSpan(
+                                        android.text.style.StyleSpan(
+                                            Typeface.BOLD
+                                        ),
+                                        spanStart,
+                                        start,
+                                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                                    )
+                                }
+
+                                if (end < spanEnd) {
+                                    e.setSpan(
+                                        android.text.style.StyleSpan(
+                                            Typeface.BOLD
+                                        ),
+                                        end,
+                                        spanEnd,
+                                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                                    )
+                                }
+                            } else {
+                                e.removeSpan(span)
+                            }
+                        }
+                    }
+                } else {
+                    e.setSpan(
+                        android.text.style.StyleSpan(
+                            Typeface.BOLD
+                        ),
+                        start,
+                        end,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+            }
+
+            if (underline) {
+                val spans =
+                    e.getSpans(
+                        start,
+                        end,
+                        android.text.style.UnderlineSpan::class.java
+                    )
+
+                if (remove) {
+                    spans.forEach { span ->
+                        val spanStart =
+                            e.getSpanStart(span)
+                        val spanEnd =
+                            e.getSpanEnd(span)
+
+                        if (
+                            spanStart <= start &&
+                            spanEnd >= end
+                        ) {
+                            e.removeSpan(span)
+
+                            if (spanStart < start) {
+                                e.setSpan(
+                                    android.text.style.UnderlineSpan(),
+                                    spanStart,
+                                    start,
+                                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                                )
+                            }
+
+                            if (end < spanEnd) {
+                                e.setSpan(
+                                    android.text.style.UnderlineSpan(),
+                                    end,
+                                    spanEnd,
+                                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                                )
+                            }
+                        } else {
+                            e.removeSpan(span)
+                        }
+                    }
+                } else {
+                    e.setSpan(
+                        android.text.style.UnderlineSpan(),
+                        start,
+                        end,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                }
+            }
+
+            editor.requestFocus()
+
+            if (hasSelection) {
+                editor.setSelection(
+                    minOf(rawStart, rawEnd)
+                        .coerceIn(0, editor.length()),
+                    maxOf(rawStart, rawEnd)
+                        .coerceIn(0, editor.length())
+                )
+            } else {
+                editor.setSelection(
+                    rawStart.coerceIn(
+                        0,
+                        editor.length()
+                    )
+                )
+            }
+
+            editor.invalidate()
+        }
 
         fun tool(
             label: String,
-            action: () -> Unit
+            bold: Boolean,
+            underline: Boolean
         ) =
             Button(this).apply {
                 text = label
                 textSize = 12f
+
+                /*
+                 * Remember the selection before the button can steal focus.
+                 */
+                setOnTouchListener { _, event ->
+                    if (
+                        event.actionMasked ==
+                        MotionEvent.ACTION_DOWN
+                    ) {
+                        rememberSelection()
+                    }
+                    false
+                }
+
+                /*
+                 * First tap applies the formatting.
+                 * Second tap within Android's double-tap timeout removes it.
+                 */
+                var lastTapTime = 0L
+
                 setOnClickListener {
-                    action()
+                    val now =
+                        android.os.SystemClock
+                            .uptimeMillis()
+
+                    val doubleTap =
+                        now - lastTapTime <=
+                            android.view.ViewConfiguration
+                                .getDoubleTapTimeout()
+
+                    lastTapTime =
+                        if (doubleTap) 0L else now
+
+                    applyFormatting(
+                        bold = bold,
+                        underline = underline,
+                        remove = doubleTap
+                    )
                 }
 
                 layoutParams =
@@ -2271,135 +2546,28 @@ class MainActivity : Activity() {
                     }
             }
 
-        val editor =
-            EditText(this).apply {
-
-                setText(
-                    descriptionToSpanned(initial),
-                    TextView.BufferType.SPANNABLE
-                )
-
-                setTextSize(14f)
-
-                setTextColor(
-                    Color.DKGRAY
-                )
-
-                gravity =
-                    Gravity.TOP or Gravity.START
-
-                this.minLines = minLines
-
-                maxLines = 10
-
-                inputType =
-                    android.text.InputType.TYPE_CLASS_TEXT or
-                    android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                    android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-
-                setPadding(
-                    dp(12),
-                    dp(10),
-                    dp(12),
-                    dp(10)
-                )
-            }
-
-        fun formatCurrentLine(
-            bold: Boolean,
-            underline: Boolean
-        ) {
-
-            val e =
-                editor.text ?: return
-
-            if (e.isEmpty()) {
-                return
-            }
-
-            val cursor =
-                editor.selectionStart
-                    .coerceAtLeast(0)
-                    .coerceAtMost(
-                        e.length
-                    )
-
-            val start =
-                e.toString()
-                    .lastIndexOf(
-                        '\n',
-                        (cursor - 1)
-                            .coerceAtLeast(0)
-                    )
-                    .let {
-                        if (it < 0) 0 else it + 1
-                    }
-
-            val foundEnd =
-                e.toString()
-                    .indexOf(
-                        '\n',
-                        cursor
-                    )
-
-            val end =
-                if (foundEnd < 0)
-                    e.length
-                else
-                    foundEnd
-
-            if (start >= end) {
-                return
-            }
-
-            if (bold) {
-                e.setSpan(
-                    android.text.style.StyleSpan(
-                        Typeface.BOLD
-                    ),
-                    start,
-                    end,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-
-            if (underline) {
-                e.setSpan(
-                    android.text.style.UnderlineSpan(),
-                    start,
-                    end,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-
-            editor.invalidate()
-        }
-
         toolbar.addView(
-            tool("B") {
-                formatCurrentLine(
-                    bold = true,
-                    underline = false
-                )
-            }
+            tool(
+                "B",
+                bold = true,
+                underline = false
+            )
         )
 
         toolbar.addView(
-            tool("U") {
-                formatCurrentLine(
-                    bold = false,
-                    underline = true
-                )
-            }
+            tool(
+                "U",
+                bold = false,
+                underline = true
+            )
         )
 
         toolbar.addView(
-            tool("B + U") {
-                formatCurrentLine(
-                    bold = true,
-                    underline = true
-                )
-            }
+            tool(
+                "B + U",
+                bold = true,
+                underline = true
+            )
         )
 
         root.addView(
