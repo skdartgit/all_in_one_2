@@ -787,27 +787,38 @@ private class CodeEditText(
         offset: Int
     ): Boolean {
 
+        /*
+         * Keep Android's normal cursor handling for horizontal scrolling.
+         * When the user has manually chosen a vertical position, allow
+         * the cursor to move horizontally into view but restore the
+         * manually chosen vertical position.
+         */
         if (userHasScrolled) {
-            return true
+
+            val lockedY = scrollY
+
+            val result =
+                super.bringPointIntoView(
+                    offset
+                )
+
+            scrollTo(
+                scrollX,
+                lockedY
+            )
+
+            post {
+                scrollTo(
+                    scrollX,
+                    lockedY
+                )
+            }
+
+            return result
         }
 
         return super.bringPointIntoView(
             offset
-        )
-    }
-
-    override fun requestRectangleOnScreen(
-        rectangle: Rect,
-        immediate: Boolean
-    ): Boolean {
-
-        if (userHasScrolled) {
-            return true
-        }
-
-        return super.requestRectangleOnScreen(
-            rectangle,
-            immediate
         )
     }
 
