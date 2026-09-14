@@ -787,6 +787,15 @@ private class CodeEditText(
         val pos =
             selectionStart
 
+        // Remember where the user was looking. Re-applying the
+        // highlighted Spannable must not force the editor back
+        // to the cursor/bottom on every keystroke.
+        val oldScrollX =
+            scrollX
+
+        val oldScrollY =
+            scrollY
+
         busy = true
 
         setText(
@@ -799,6 +808,13 @@ private class CodeEditText(
                 length()
             )
         )
+
+        post {
+            scrollTo(
+                oldScrollX,
+                oldScrollY
+            )
+        }
 
         busy = false
     }
@@ -1520,32 +1536,32 @@ class MainActivity : Activity() {
     }
 
     private fun codeRow(): LinearLayout {
-
+    
         val r =
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
             }
-
+    
         bgView(
             r,
             Color.WHITE,
             12f
         )
-
+    
         // --------------------------------------------------------
-        // 1. CODE TITLE
+        // CODE TITLE
         // --------------------------------------------------------
-
+    
         val top =
             LinearLayout(this).apply {
                 gravity = Gravity.CENTER_VERTICAL
             }
-
+    
         val t =
             tv("").apply {
                 id = 1001
             }
-
+    
         top.addView(
             t,
             LinearLayout.LayoutParams(
@@ -1554,12 +1570,12 @@ class MainActivity : Activity() {
                 1f
             )
         )
-
+    
         val e =
             button("✎") {}.apply {
                 id = 1002
             }
-
+    
         top.addView(
             e,
             LinearLayout.LayoutParams(
@@ -1567,101 +1583,74 @@ class MainActivity : Activity() {
                 dp(40)
             )
         )
-
+    
         r.addView(top)
-
+    
         // --------------------------------------------------------
         // DETAILS CONTAINER
         // --------------------------------------------------------
-
+    
         val details =
             LinearLayout(this).apply {
                 id = 1007
                 orientation = LinearLayout.VERTICAL
                 visibility = View.GONE
-            }
-
-        // --------------------------------------------------------
-        // 2. CODE DESCRIPTION
-        // Plain text only - NO horizontal scrolling
-        // --------------------------------------------------------
-
-        val descSection =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
                 setPadding(
                     dp(14),
-                    dp(8),
+                    dp(4),
                     dp(14),
                     dp(12)
                 )
             }
-
+    
+        // --------------------------------------------------------
+        // CODE DESCRIPTION
+        // --------------------------------------------------------
+    
         val descLabel =
             tv(
                 "Code Description",
                 14f,
                 true
             )
-
-        descSection.addView(descLabel)
-
+    
+        details.addView(descLabel)
+    
         val desc =
             tv("").apply {
                 id = 1005
                 typeface = Typeface.DEFAULT
                 isSingleLine = false
                 setHorizontallyScrolling(false)
-                setTextIsSelectable(true)
                 setPadding(
                     0,
                     dp(4),
                     0,
-                    0
+                    dp(14)
                 )
             }
-
-        descSection.addView(
+    
+        details.addView(
             desc,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
-
-        details.addView(
-            descSection,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
+    
         // --------------------------------------------------------
-        // 3. ORIGINAL CODE
-        // Syntax highlighting ON + horizontal scrolling ONLY here
+        // ORIGINAL CODE
         // --------------------------------------------------------
-
-        val codeSection =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(
-                    dp(14),
-                    dp(8),
-                    0,
-                    dp(12)
-                )
-            }
-
+    
         val codeLabel =
             tv(
                 "Original Code",
                 14f,
                 true
             )
-
-        codeSection.addView(codeLabel)
-
+    
+        details.addView(codeLabel)
+    
         val hs =
             HorizontalScrollView(this).apply {
                 isHorizontalScrollBarEnabled = true
@@ -1669,47 +1658,39 @@ class MainActivity : Activity() {
                 overScrollMode =
                     View.OVER_SCROLL_IF_CONTENT_SCROLLS
             }
-
+    
         val code =
             tv("").apply {
-                // 1003 belongs to Notes.
-                // My Coding uses 1006.
                 id = 1006
                 typeface = Typeface.MONOSPACE
                 setHorizontallyScrolling(true)
                 isSingleLine = false
                 setTextIsSelectable(true)
+    
                 setPadding(
                     0,
                     dp(4),
                     dp(14),
-                    0
+                    dp(12)
                 )
+    
                 layoutParams =
                     ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.WRAP_CONTENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
                     )
             }
-
+    
         hs.addView(code)
-
-        codeSection.addView(
+    
+        details.addView(
             hs,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
-
-        details.addView(
-            codeSection,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-
+    
         r.addView(
             details,
             LinearLayout.LayoutParams(
@@ -1717,7 +1698,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
         )
-
+    
         return r
     }
 
@@ -1960,11 +1941,35 @@ class MainActivity : Activity() {
         old: CodeItem?
     ) {
 
+        // The dialog itself is scrollable so a long description
+        // cannot hide the Original Code field behind the keyboard.
+        val scroll =
+            ScrollView(this).apply {
+                isFillViewport = false
+                overScrollMode =
+                    View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            }
+
         val box =
             LinearLayout(this)
 
         box.orientation =
             LinearLayout.VERTICAL
+
+        box.setPadding(
+            dp(8),
+            0,
+            dp(8),
+            dp(8)
+        )
+
+        scroll.addView(
+            box,
+            ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         val title =
             edit(
@@ -2008,7 +2013,6 @@ class MainActivity : Activity() {
             )
 
         old?.let {
-
             spinner.setSelection(
                 langs.indexOf(
                     it.lang
@@ -2027,7 +2031,7 @@ class MainActivity : Activity() {
 
         code.layoutParams =
             LinearLayout.LayoutParams(
-                -1,
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(360)
             )
 
@@ -2036,6 +2040,19 @@ class MainActivity : Activity() {
         box.addView(spinner)
         box.addView(code)
 
+        // When Original Code receives focus, bring that section
+        // above the keyboard so it can actually be edited.
+        code.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                scroll.post {
+                    scroll.smoothScrollTo(
+                        0,
+                        code.bottom
+                    )
+                }
+            }
+        }
+
         AlertDialog.Builder(this)
             .setTitle(
                 if (old == null)
@@ -2043,7 +2060,7 @@ class MainActivity : Activity() {
                 else
                     "Edit Code"
             )
-            .setView(box)
+            .setView(scroll)
             .setPositiveButton("Save") { _, _ ->
 
                 var name =
@@ -2051,7 +2068,6 @@ class MainActivity : Activity() {
                         .trim()
 
                 if (name.isBlank()) {
-
                     name =
                         desc.text.toString()
                             .trim()
@@ -2083,6 +2099,7 @@ class MainActivity : Activity() {
                 } else {
 
                     old.title = name
+
                     old.desc =
                         desc.text.toString()
 
@@ -3676,26 +3693,24 @@ class MainActivity : Activity() {
     private class VH(
         v: View
     ) : RecyclerView.ViewHolder(v) {
-
+    
         val title =
             v.findViewById<TextView>(1001)
-
+    
         val edit =
             v.findViewById<Button>(1002)
-
-        // Notes / other existing sections
+    
+        // Used by Notes / Accounts
         val detail =
             v.findViewById<TextView>(1003)
-
-        // My Coding
+    
+        // Used by My Coding
         val details =
             v.findViewById<LinearLayout>(1007)
-
+    
         val description =
             v.findViewById<TextView>(1005)
-
-        // My Coding code field
-        // Uses 1006 so it does not conflict with Notes (1003).
+    
         val code =
             v.findViewById<TextView>(1006)
     }
