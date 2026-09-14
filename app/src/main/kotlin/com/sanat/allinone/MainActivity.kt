@@ -1703,7 +1703,7 @@ class MainActivity : Activity() {
             h.itemView.setOnClickListener {
 
                 h.detail.text =
-                    n.desc
+                    descriptionToSpanned(n.desc)
 
                 h.detail.visibility =
                     if (
@@ -1716,7 +1716,7 @@ class MainActivity : Activity() {
             }
 
             h.detail.text =
-                n.desc
+                descriptionToSpanned(n.desc)
 
             h.detail.visibility =
                 View.GONE
@@ -1958,6 +1958,477 @@ class MainActivity : Activity() {
         return r
     }
 
+
+    /*
+     * Rich description support.
+     *
+     * Descriptions are still stored as String, so the existing data format
+     * remains compatible. Bold and underline are stored as small inline
+     * markers and converted back to Android spans when displayed/edited.
+     *
+     * The toolbar formats the complete current line, as requested.
+     */
+    private fun descriptionToSpanned(
+        value: String
+    ): SpannableString {
+
+        val result =
+            SpannableString(
+                value
+                    .replace("[/b]", "")
+                    .replace("[b]", "")
+                    .replace("[/u]", "")
+                    .replace("[u]", "")
+            )
+
+        var plain =
+            value
+
+        val boldRanges =
+            mutableListOf<Pair<Int, Int>>()
+
+        val underlineRanges =
+            mutableListOf<Pair<Int, Int>>()
+
+        /*
+         * Build the clean text while recording span ranges.
+         */
+        val clean =
+            StringBuilder()
+
+        var i = 0
+        var boldStart = -1
+        var underlineStart = -1
+
+        while (i < plain.length) {
+
+            when {
+                plain.startsWith(
+                    "[b]",
+                    i
+                ) -> {
+                    if (boldStart < 0) {
+                        boldStart =
+                            clean.length
+                    }
+                    i += 3
+                }
+
+                plain.startsWith(
+                    "[/b]",
+                    i
+                ) -> {
+                    if (boldStart >= 0) {
+                        boldRanges.add(
+                            Pair(
+                                boldStart,
+                                clean.length
+                            )
+                        )
+                        boldStart = -1
+                    }
+                    i += 4
+                }
+
+                plain.startsWith(
+                    "[u]",
+                    i
+                ) -> {
+                    if (underlineStart < 0) {
+                        underlineStart =
+                            clean.length
+                    }
+                    i += 3
+                }
+
+                plain.startsWith(
+                    "[/u]",
+                    i
+                ) -> {
+                    if (underlineStart >= 0) {
+                        underlineRanges.add(
+                            Pair(
+                                underlineStart,
+                                clean.length
+                            )
+                        )
+                        underlineStart = -1
+                    }
+                    i += 4
+                }
+
+                else -> {
+                    clean.append(
+                        plain[i]
+                    )
+                    i++
+                }
+            }
+        }
+
+        if (boldStart >= 0) {
+            boldRanges.add(
+                Pair(
+                    boldStart,
+                    clean.length
+                )
+            )
+        }
+
+        if (underlineStart >= 0) {
+            underlineRanges.add(
+                Pair(
+                    underlineStart,
+                    clean.length
+                )
+            )
+        }
+
+        val sp =
+            SpannableString(
+                clean.toString()
+            )
+
+        boldRanges.forEach {
+            val a =
+                it.first.coerceIn(
+                    0,
+                    sp.length
+                )
+            val b =
+                it.second.coerceIn(
+                    a,
+                    sp.length
+                )
+
+            if (a < b) {
+                sp.setSpan(
+                    android.text.style.StyleSpan(
+                        Typeface.BOLD
+                    ),
+                    a,
+                    b,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+
+        underlineRanges.forEach {
+            val a =
+                it.first.coerceIn(
+                    0,
+                    sp.length
+                )
+            val b =
+                it.second.coerceIn(
+                    a,
+                    sp.length
+                )
+
+            if (a < b) {
+                sp.setSpan(
+                    android.text.style.UnderlineSpan(),
+                    a,
+                    b,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+
+        return sp
+    }
+
+    private fun spannedToDescription(
+        value: CharSequence
+    ): String {
+
+        if (value !is Spanned) {
+            return value.toString()
+        }
+
+        val s =
+            value.toString()
+
+        val bold =
+            value.getSpans(
+                0,
+                value.length,
+                android.text.style.StyleSpan::class.java
+            ).filter {
+                it.style == Typeface.BOLD ||
+                it.style == Typeface.BOLD_ITALIC
+            }
+
+        val underline =
+            value.getSpans(
+                0,
+                value.length,
+                android.text.style.UnderlineSpan::class.java
+            )
+
+        val starts =
+            mutableMapOf<Int, MutableList<String>>()
+
+        val ends =
+            mutableMapOf<Int, MutableList<String>>()
+
+        bold.forEach {
+            starts.getOrPut(
+                value.getSpanStart(it)
+            ) {
+                mutableListOf()
+            }.add("[b]")
+
+            ends.getOrPut(
+                value.getSpanEnd(it)
+            ) {
+                mutableListOf()
+            }.add("[/b]")
+        }
+
+        underline.forEach {
+            starts.getOrPut(
+                value.getSpanStart(it)
+            ) {
+                mutableListOf()
+            }.add("[u]")
+
+            ends.getOrPut(
+                value.getSpanEnd(it)
+            ) {
+                mutableListOf()
+            }.add("[/u]")
+        }
+
+        val result =
+            StringBuilder()
+
+        for (i in s.indices) {
+
+            ends[i]?.asReversed()?.forEach {
+                result.append(it)
+            }
+
+            starts[i]?.forEach {
+                result.append(it)
+            }
+
+            result.append(
+                s[i]
+            )
+        }
+
+        ends[s.length]
+            ?.asReversed()
+            ?.forEach {
+                result.append(it)
+            }
+
+        return result.toString()
+    }
+
+    private fun richDescriptionEditor(
+        initial: String,
+        minLines: Int
+    ): Pair<LinearLayout, EditText> {
+
+        val root =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    dp(4),
+                    dp(4),
+                    dp(4),
+                    dp(4)
+                )
+            }
+
+        val toolbar =
+            LinearLayout(this).apply {
+                orientation =
+                    LinearLayout.HORIZONTAL
+            }
+
+        fun tool(
+            label: String,
+            action: () -> Unit
+        ) =
+            Button(this).apply {
+                text = label
+                textSize = 12f
+                setOnClickListener {
+                    action()
+                }
+
+                layoutParams =
+                    LinearLayout.LayoutParams(
+                        dp(64),
+                        dp(42)
+                    ).apply {
+                        rightMargin = dp(6)
+                    }
+            }
+
+        val editor =
+            EditText(this).apply {
+
+                setText(
+                    descriptionToSpanned(initial),
+                    TextView.BufferType.SPANNABLE
+                )
+
+                setTextSize(14f)
+
+                setTextColor(
+                    Color.DKGRAY
+                )
+
+                gravity =
+                    Gravity.TOP or Gravity.START
+
+                this.minLines = minLines
+
+                maxLines = 10
+
+                inputType =
+                    android.text.InputType.TYPE_CLASS_TEXT or
+                    android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                    android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+
+                setPadding(
+                    dp(12),
+                    dp(10),
+                    dp(12),
+                    dp(10)
+                )
+            }
+
+        fun formatCurrentLine(
+            bold: Boolean,
+            underline: Boolean
+        ) {
+
+            val e =
+                editor.text ?: return
+
+            if (e.isEmpty()) {
+                return
+            }
+
+            val cursor =
+                editor.selectionStart
+                    .coerceAtLeast(0)
+                    .coerceAtMost(
+                        e.length
+                    )
+
+            val start =
+                e.toString()
+                    .lastIndexOf(
+                        '\n',
+                        (cursor - 1)
+                            .coerceAtLeast(0)
+                    )
+                    .let {
+                        if (it < 0) 0 else it + 1
+                    }
+
+            val foundEnd =
+                e.toString()
+                    .indexOf(
+                        '\n',
+                        cursor
+                    )
+
+            val end =
+                if (foundEnd < 0)
+                    e.length
+                else
+                    foundEnd
+
+            if (start >= end) {
+                return
+            }
+
+            if (bold) {
+                e.setSpan(
+                    android.text.style.StyleSpan(
+                        Typeface.BOLD
+                    ),
+                    start,
+                    end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+
+            if (underline) {
+                e.setSpan(
+                    android.text.style.UnderlineSpan(),
+                    start,
+                    end,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+
+            editor.invalidate()
+        }
+
+        toolbar.addView(
+            tool("B") {
+                formatCurrentLine(
+                    bold = true,
+                    underline = false
+                )
+            }
+        )
+
+        toolbar.addView(
+            tool("U") {
+                formatCurrentLine(
+                    bold = false,
+                    underline = true
+                )
+            }
+        )
+
+        toolbar.addView(
+            tool("B + U") {
+                formatCurrentLine(
+                    bold = true,
+                    underline = true
+                )
+            }
+        )
+
+        root.addView(
+            toolbar,
+            LinearLayout.LayoutParams(
+                -1,
+                -2
+            )
+        )
+
+        root.addView(
+            editor,
+            LinearLayout.LayoutParams(
+                -1,
+                dp(
+                    if (minLines >= 6)
+                        190
+                    else
+                        150
+                )
+            )
+        )
+
+        return Pair(
+            root,
+            editor
+        )
+    }
+
     private fun noteDialog(
         old: Note?
     ) {
@@ -1987,17 +2458,17 @@ class MainActivity : Activity() {
                 old?.date ?: dateNow()
             )
 
-        val desc =
-            edit(
-                "Write Description",
-                old?.desc ?: ""
+        val descEditor =
+            richDescriptionEditor(
+                old?.desc ?: "",
+                6
             )
-
-        desc.minLines = 6
 
         box.addView(t)
         box.addView(d)
-        box.addView(desc)
+        box.addView(
+            descEditor.first
+        )
 
         AlertDialog.Builder(this)
             .setTitle(
@@ -2025,7 +2496,7 @@ class MainActivity : Activity() {
                                 .ifBlank {
                                     dateNow()
                                 },
-                            desc.text.toString()
+                            spannedToDescription(descEditor.second.text)
                         )
                     )
 
@@ -2038,7 +2509,7 @@ class MainActivity : Activity() {
                         d.text.toString()
 
                     old.desc =
-                        desc.text.toString()
+                        spannedToDescription(descEditor.second.text)
 
                     val idx =
                         l.indexOfFirst {
@@ -2172,7 +2643,9 @@ class MainActivity : Activity() {
             h.itemView.setOnClickListener {
             
                 h.description.text =
-                    c.desc
+                    descriptionToSpanned(
+                        c.desc
+                    )
             
                 h.code.text =
                     highlightCode(
@@ -2237,13 +2710,11 @@ class MainActivity : Activity() {
                 old?.title ?: ""
             )
 
-        val desc =
-            edit(
-                "Code Description",
-                old?.desc ?: ""
+        val descEditor =
+            richDescriptionEditor(
+                old?.desc ?: "",
+                3
             )
-
-        desc.minLines = 3
 
         val spinner =
             Spinner(this)
@@ -2325,7 +2796,9 @@ class MainActivity : Activity() {
             }
 
         box.addView(title)
-        box.addView(desc)
+        box.addView(
+            descEditor.first
+        )
         box.addView(spinner)
         box.addView(code)
 
@@ -2355,7 +2828,8 @@ class MainActivity : Activity() {
                     if (name.isBlank()) {
 
                         name =
-                            desc.text.toString()
+                            descEditor.second.text
+                                .toString()
                                 .trim()
                                 .split(
                                     Regex("\\s+")
@@ -2376,7 +2850,9 @@ class MainActivity : Activity() {
                             CodeItem(
                                 store.id("code"),
                                 name,
-                                desc.text.toString(),
+                                spannedToDescription(
+                                    descEditor.second.text
+                                ),
                                 spinner.selectedItem.toString(),
                                 code.text.toString()
                             )
@@ -2387,7 +2863,9 @@ class MainActivity : Activity() {
                         old.title = name
 
                         old.desc =
-                            desc.text.toString()
+                            spannedToDescription(
+                                descEditor.second.text
+                            )
 
                         old.lang =
                             spinner.selectedItem
