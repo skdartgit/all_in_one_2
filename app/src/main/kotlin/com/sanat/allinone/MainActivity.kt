@@ -605,10 +605,8 @@ private class CodeEditText(
     private var busy = false
 
     /*
-     * IMPORTANT:
-     * Once the user manually scrolls the code editor, Android must NOT
-     * automatically move the editor back to the cursor position while
-     * syntax highlighting or typing is happening.
+     * Once the user manually scrolls vertically, keep that vertical
+     * position while typing. Horizontal cursor movement is still allowed.
      */
     private var userHasScrolled = false
     private var touchDownY = 0f
@@ -616,10 +614,7 @@ private class CodeEditText(
     private val touchSlop =
         ViewConfiguration.get(c).scaledTouchSlop
 
-    private val kw =
-        Regex(
-            "\\b(fun|val|var|class|object|interface|if|else|when|for|while|return|import|package|public|private|protected|static|void|new|try|catch|finally|throw|throws|extends|implements|def|lambda|True|False|None|print|function|const|let|async|await|return|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE)\\b"
-        )
+    var language: String = "Kotlin"
 
     init {
 
@@ -727,11 +722,6 @@ private class CodeEditText(
         )
     }
 
-    /*
-     * Let this editor own vertical/horizontal scrolling while the finger
-     * is inside it. This prevents the dialog's ScrollView from fighting
-     * with the code editor.
-     */
     override fun onTouchEvent(
         event: MotionEvent
     ): Boolean {
@@ -776,23 +766,13 @@ private class CodeEditText(
     }
 
     /*
-     * Android normally tries to bring the cursor into view after every
-     * text change. That is what causes the annoying jump to the bottom.
-     *
-     * Before the user manually scrolls, normal Android behaviour is kept.
-     * After a manual scroll, the current viewport is locked until the user
-     * changes it manually again.
+     * Preserve the manually chosen vertical position, but let Android
+     * move the cursor horizontally so long lines remain visible.
      */
     override fun bringPointIntoView(
         offset: Int
     ): Boolean {
 
-        /*
-         * Keep Android's normal cursor handling for horizontal scrolling.
-         * When the user has manually chosen a vertical position, allow
-         * the cursor to move horizontally into view but restore the
-         * manually chosen vertical position.
-         */
         if (userHasScrolled) {
 
             val lockedY = scrollY
@@ -832,64 +812,10 @@ private class CodeEditText(
             text.toString()
 
         val sp =
-            android.text.SpannableString(s)
-
-        fun col(
-            r: Regex,
-            color: Int
-        ) {
-
-            r.findAll(s).forEach {
-
-                sp.setSpan(
-                    ForegroundColorSpan(color),
-                    it.range.first,
-                    it.range.last + 1,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-        }
-
-        col(
-            kw,
-            Color.rgb(
-                75,
-                55,
-                180
+            highlightCode(
+                s,
+                language
             )
-        )
-
-        col(
-            Regex(
-                "(//.*$|#.*$)",
-                RegexOption.MULTILINE
-            ),
-            Color.rgb(
-                90,
-                90,
-                90
-            )
-        )
-
-        col(
-            Regex(
-                "(\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*')"
-            ),
-            Color.rgb(
-                170,
-                65,
-                40
-            )
-        )
-
-        col(
-            Regex("<[^>]+>"),
-            Color.rgb(
-                0,
-                110,
-                130
-            )
-        )
 
         val pos =
             selectionStart
@@ -915,10 +841,6 @@ private class CodeEditText(
 
         busy = false
 
-        /*
-         * setText() can reset the internal EditText scroll position.
-         * Restore exactly the position the user had chosen.
-         */
         post {
             scrollTo(
                 oldScrollX,
@@ -927,6 +849,228 @@ private class CodeEditText(
         }
     }
 }
+
+private fun highlightCode(
+    s: String,
+    language: String
+): SpannableString {
+
+    val sp =
+        SpannableString(s)
+
+    fun col(
+        regex: Regex,
+        color: Int
+    ) {
+        regex.findAll(s).forEach {
+            if (it.range.first <= it.range.last) {
+                sp.setSpan(
+                    ForegroundColorSpan(color),
+                    it.range.first,
+                    it.range.last + 1,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+        }
+    }
+
+    val keywordColor =
+        Color.rgb(75, 55, 180)
+
+    val commentColor =
+        Color.rgb(90, 90, 90)
+
+    val stringColor =
+        Color.rgb(170, 65, 40)
+
+    val tagColor =
+        Color.rgb(0, 110, 130)
+
+    val numberColor =
+        Color.rgb(0, 125, 95)
+
+    val annotationColor =
+        Color.rgb(125, 70, 150)
+
+    val lang =
+        language.trim().lowercase(
+            Locale.US
+        )
+
+    val keywords =
+        when (lang) {
+
+            "python" ->
+                "\\b(and|as|assert|async|await|break|case|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|match|nonlocal|not|or|pass|raise|return|try|while|with|yield|True|False|None|self|print)\\b"
+
+            "kotlin" ->
+                "\\b(as|break|class|continue|data|do|else|false|for|fun|if|in|interface|is|lateinit|object|null|open|override|package|private|protected|public|return|sealed|super|this|throw|true|try|typealias|typeof|val|var|vararg|when|while|by|catch|constructor|delegate|dynamic|field|file|finally|get|import|init|param|property|receiver|set|setparam|where|actual|abstract|annotation|companion|const|crossinline|expect|external|final|infix|inline|inner|internal|noinline|out|operator|reified|suspend|tailrec|value|it)\\b"
+
+            "java" ->
+                "\\b(abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|true|false|try|void|volatile|while|var|record|sealed|permits|yield)\\b"
+
+            "javascript" ->
+                "\\b(await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|false|finally|for|function|if|import|in|instanceof|let|new|null|return|static|super|switch|this|throw|true|try|typeof|var|void|while|with|yield|async|of|get|set)\\b"
+
+            "c", "c++" ->
+                "\\b(auto|bool|break|case|catch|char|class|const|constexpr|continue|default|delete|do|double|else|enum|explicit|extern|false|float|for|friend|if|inline|int|long|namespace|new|nullptr|operator|private|protected|public|register|return|short|signed|sizeof|static|struct|switch|template|this|throw|true|try|typedef|typename|union|unsigned|using|virtual|void|volatile|while)\\b"
+
+            "sql" ->
+                "\\b(SELECT|FROM|WHERE|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|DATABASE|INDEX|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|ON|AS|AND|OR|NOT|NULL|IS|IN|LIKE|BETWEEN|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|DISTINCT|UNION|ALL|PRIMARY|KEY|FOREIGN|REFERENCES|DEFAULT|CASE|WHEN|THEN|ELSE|END|COUNT|SUM|AVG|MIN|MAX)\\b"
+
+            "shell" ->
+                "\\b(if|then|else|elif|fi|for|while|in|do|done|case|esac|function|select|until|time|export|local|readonly|return|source|echo|printf|cd|pwd|exit|true|false)\\b"
+
+            "json" ->
+                "\\b(true|false|null)\\b"
+
+            "css" ->
+                "\\b(display|position|top|right|bottom|left|width|height|margin|padding|border|color|background|font|font-size|font-family|flex|grid|content|align-items|justify-content|overflow|opacity|z-index|transform|transition|animation)\\b"
+
+            "html", "xml" ->
+                ""
+
+            else ->
+                "\\b(fun|val|var|class|object|interface|if|else|when|for|while|return|import|package|public|private|protected|static|void|new|def|print|function|const|let|async|await)\\b"
+        }
+
+    if (keywords.isNotEmpty()) {
+        col(
+            Regex(
+                keywords,
+                if (lang == "sql")
+                    setOf(RegexOption.IGNORE_CASE)
+                else
+                    emptySet()
+            ),
+            keywordColor
+        )
+    }
+
+    when (lang) {
+
+        "python", "shell" -> {
+            col(
+                Regex(
+                    "#.*$",
+                    RegexOption.MULTILINE
+                ),
+                commentColor
+            )
+        }
+
+        "html", "xml" -> {
+            col(
+                Regex(
+                    "<!--[\\s\\S]*?-->"
+                ),
+                commentColor
+            )
+        }
+
+        "sql" -> {
+            col(
+                Regex(
+                    "--.*$|/\\*[\\s\\S]*?\\*/",
+                    RegexOption.MULTILINE
+                ),
+                commentColor
+            )
+        }
+
+        "css" -> {
+            col(
+                Regex(
+                    "/\\*[\\s\\S]*?\\*/"
+                ),
+                commentColor
+            )
+        }
+
+        else -> {
+            col(
+                Regex(
+                    "//.*$|/\\*[\\s\\S]*?\\*/",
+                    RegexOption.MULTILINE
+                ),
+                commentColor
+            )
+        }
+    }
+
+    col(
+        Regex(
+            "\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'"
+        ),
+        stringColor
+    )
+
+    if (
+        lang == "html" ||
+        lang == "xml"
+    ) {
+        col(
+            Regex(
+                "</?[A-Za-z][^>]*>|<!DOCTYPE[^>]*>",
+                setOf(
+                    RegexOption.IGNORE_CASE
+                )
+            ),
+            tagColor
+        )
+    }
+
+    if (lang == "css") {
+        col(
+            Regex(
+                "#[0-9a-fA-F]{3,8}\\b"
+            ),
+            stringColor
+        )
+    }
+
+    if (lang == "json") {
+        col(
+            Regex(
+                "\"([^\"\\\\]|\\\\.)*\"(?=\\s*:)"
+            ),
+            tagColor
+        )
+    }
+
+    if (lang == "shell") {
+        col(
+            Regex(
+                "\\$[A-Za-z_][A-Za-z0-9_]*|\\$\\{[^}]+\\}"
+            ),
+            annotationColor
+        )
+    }
+
+    if (
+        lang == "python" ||
+        lang == "kotlin" ||
+        lang == "java" ||
+        lang == "javascript"
+    ) {
+        col(
+            Regex(
+                "@[A-Za-z_][A-Za-z0-9_.]*"
+            ),
+            annotationColor
+        )
+    }
+
+    col(
+        Regex(
+            "\\b(?:0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?)\\b"
+        ),
+        numberColor
+    )
+
+    return sp
+}
+
 
 class MainActivity : Activity() {
 
@@ -2031,8 +2175,9 @@ class MainActivity : Activity() {
                     c.desc
             
                 h.code.text =
-                    highlightText(
-                        c.code
+                    highlightCode(
+                        c.code,
+                        c.lang
                     )
             
                 h.code.setTypeface(
@@ -2139,9 +2284,35 @@ class MainActivity : Activity() {
         val code =
             CodeEditText(this)
 
+        code.language =
+            old?.lang ?: "Kotlin"
+
         code.setText(
             old?.code ?: ""
         )
+
+        code.highlight()
+
+        spinner.onItemSelectedListener =
+            object : AdapterView.OnItemSelectedListener {
+
+                override fun onItemSelected(
+                    parent: AdapterView<*>?,
+                    view: View?,
+                    position: Int,
+                    id: Long
+                ) {
+                    code.language =
+                        langs[position]
+
+                    code.highlight()
+                }
+
+                override fun onNothingSelected(
+                    parent: AdapterView<*>?
+                ) {
+                }
+            }
 
         code.minLines = 18
 
@@ -3755,93 +3926,13 @@ class MainActivity : Activity() {
     // --------------------------------------------------------
 
     private fun highlightText(
-        s: String
-    ): CharSequence {
-
-        val sp =
-            android.text.SpannableString(
-                s
-            )
-
-        Regex(
-            "\\b(fun|val|var|class|object|interface|if|else|when|for|while|return|import|package|public|private|static|void|new|def|print|function|const|let|async|await|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE)\\b"
+        s: String,
+        language: String = "Other"
+    ): CharSequence =
+        highlightCode(
+            s,
+            language
         )
-            .findAll(s)
-            .forEach {
-
-                sp.setSpan(
-                    ForegroundColorSpan(
-                        Color.rgb(
-                            75,
-                            55,
-                            180
-                        )
-                    ),
-                    it.range.first,
-                    it.range.last + 1,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-
-        Regex(
-            "(//.*$|#.*$)",
-            RegexOption.MULTILINE
-        )
-            .findAll(s)
-            .forEach {
-
-                sp.setSpan(
-                    ForegroundColorSpan(
-                        Color.DKGRAY
-                    ),
-                    it.range.first,
-                    it.range.last + 1,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-
-        Regex(
-            "\"[^\"]*\"|\'[^\']*\'"
-        )
-            .findAll(s)
-            .forEach {
-
-                sp.setSpan(
-                    ForegroundColorSpan(
-                        Color.rgb(
-                            170,
-                            65,
-                            40
-                        )
-                    ),
-                    it.range.first,
-                    it.range.last + 1,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-
-        Regex(
-            "<[^>]+>"
-        )
-            .findAll(s)
-            .forEach {
-
-                sp.setSpan(
-                    ForegroundColorSpan(
-                        Color.rgb(
-                            0,
-                            110,
-                            130
-                        )
-                    ),
-                    it.range.first,
-                    it.range.last + 1,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-
-        return sp
-    }
 
     private fun toast(
         s: String
