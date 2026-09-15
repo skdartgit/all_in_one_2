@@ -1711,44 +1711,14 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------------
-    // BORDERED LIST SECTION
+    // LIST DISPLAY
     // --------------------------------------------------------
 
-    private fun addBorderedList(
+    private fun addList(
         rv: RecyclerView
     ) {
-
-        val listContainer =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background =
-                    GradientDrawable().apply {
-                        setColor(Color.TRANSPARENT)
-                        setStroke(
-                            dp(1),
-                            Color.BLACK
-                        )
-                        cornerRadius =
-                            dp(10).toFloat()
-                    }
-                setPadding(
-                    dp(2),
-                    dp(2),
-                    dp(2),
-                    dp(2)
-                )
-            }
-
-        listContainer.addView(
-            rv,
-            LinearLayout.LayoutParams(
-                -1,
-                -2
-            )
-        )
-
         content.addView(
-            listContainer,
+            rv,
             LinearLayout.LayoutParams(
                 -1,
                 -2
@@ -1788,7 +1758,7 @@ class MainActivity : Activity() {
         rv.setPadding(0, 0, 0, dp(12))
         rv.clipToPadding = false
 
-        addBorderedList(rv)
+        addList(rv)
 
         // Long-press a saved note, drag it up/down, and release
         // to permanently save the new note order.
@@ -1865,6 +1835,12 @@ class MainActivity : Activity() {
             12f
         )
 
+        // Thin black border around EACH list item.
+        (r.background as? GradientDrawable)?.setStroke(
+            dp(1),
+            Color.BLACK
+        )
+
         val top =
             LinearLayout(this)
 
@@ -1935,6 +1911,12 @@ class MainActivity : Activity() {
             r,
             Color.WHITE,
             12f
+        )
+
+        // Thin black border around EACH code item.
+        (r.background as? GradientDrawable)?.setStroke(
+            dp(1),
+            Color.BLACK
         )
     
         // --------------------------------------------------------
@@ -2780,7 +2762,7 @@ class MainActivity : Activity() {
         rv.setPadding(0, 0, 0, dp(12))
         rv.clipToPadding = false
 
-        addBorderedList(rv)
+        addList(rv)
 
         attachDrag(
             rv,
@@ -3177,7 +3159,7 @@ class MainActivity : Activity() {
         rv.setPadding(0, 0, 0, dp(12))
         rv.clipToPadding = false
 
-        addBorderedList(rv)
+        addList(rv)
 
         attachDrag(
             rv,
@@ -3400,7 +3382,7 @@ class MainActivity : Activity() {
         rv.setPadding(0, 0, 0, dp(12))
         rv.clipToPadding = false
 
-        addBorderedList(rv)
+        addList(rv)
 
         attachDrag(
             rv,
