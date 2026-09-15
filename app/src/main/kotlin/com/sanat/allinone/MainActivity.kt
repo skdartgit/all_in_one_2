@@ -1451,7 +1451,7 @@ class MainActivity : Activity() {
         val title =
             tv(
                 "All in One",
-                18f,
+                22f,
                 true
             )
 
@@ -1475,6 +1475,8 @@ class MainActivity : Activity() {
             button("Exit") {
                 finishAndRemoveTask()
             }
+        
+        exit.textSize = 17f
 
         header.addView(
             exit,
