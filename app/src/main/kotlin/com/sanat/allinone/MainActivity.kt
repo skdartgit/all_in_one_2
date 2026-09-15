@@ -1297,115 +1297,12 @@ class MainActivity : Activity() {
             edit(
                 "PIN"
             )
-        
+
         pin.inputType =
-            android.text.InputType.TYPE_CLASS_NUMBER
-        
+            android.text.InputType.TYPE_CLASS_NUMBER or
+            android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+
         pin.setSingleLine()
-        
-        pin.transformationMethod =
-            object : android.text.method.TransformationMethod {
-        
-                private var visibleUntil = 0L
-        
-                override fun getTransformation(
-                    source: CharSequence?,
-                    view: View?
-                ): CharSequence {
-        
-                    if (source == null) {
-                        return ""
-                    }
-        
-                    return object : CharSequence {
-        
-                        override val length: Int
-                            get() = source.length
-        
-                        override fun get(index: Int): Char {
-                            val now =
-                                android.os.SystemClock.uptimeMillis()
-        
-                            val lastIndex =
-                                source.length - 1
-        
-                            return if (
-                                index == lastIndex &&
-                                now < visibleUntil
-                            ) {
-                                source[index]
-                            } else {
-                                '*'
-                            }
-                        }
-        
-                        override fun subSequence(
-                            startIndex: Int,
-                            endIndex: Int
-                        ): CharSequence {
-        
-                            val result =
-                                StringBuilder()
-        
-                            for (
-                                i in startIndex until endIndex
-                            ) {
-                                result.append(get(i))
-                            }
-        
-                            return result.toString()
-                        }
-        
-                        override fun toString(): String {
-                            return subSequence(
-                                0,
-                                length
-                            ).toString()
-                        }
-                    }
-                }
-        
-                override fun onFocusChanged(
-                    view: View?,
-                    sourceText: CharSequence?,
-                    focused: Boolean,
-                    direction: Int,
-                    previouslyFocusedRect: android.graphics.Rect?
-                ) {
-                }
-            }
-        
-        pin.addTextChangedListener(
-            object : android.text.TextWatcher {
-        
-                override fun beforeTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    count: Int,
-                    after: Int
-                ) {
-                }
-        
-                override fun onTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    before: Int,
-                    count: Int
-                ) {
-                    pin.postDelayed(
-                        {
-                            pin.invalidate()
-                        },
-                        1000
-                    )
-                }
-        
-                override fun afterTextChanged(
-                    s: android.text.Editable?
-                ) {
-                }
-            }
-        )
 
         box.addView(
             pin,
@@ -1728,6 +1625,49 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------------
+    // FULL-HEIGHT LIST RECYCLERVIEW
+    // --------------------------------------------------------
+
+    /*
+     * The four list pages live inside the main ScrollView.
+     * A normal RecyclerView can report a clipped/limited height when it is
+     * measured inside a ScrollView, which can make the first or last item
+     * unreachable. This subclass explicitly asks RecyclerView to measure
+     * all of its content when the parent gives it an unspecified height.
+     */
+    private class FullHeightRecyclerView(
+        context: Context
+    ) : RecyclerView(context) {
+
+        override fun onMeasure(
+            widthSpec: Int,
+            heightSpec: Int
+        ) {
+
+            val mode =
+                MeasureSpec.getMode(heightSpec)
+
+            if (mode == MeasureSpec.UNSPECIFIED) {
+
+                super.onMeasure(
+                    widthSpec,
+                    MeasureSpec.makeMeasureSpec(
+                        Int.MAX_VALUE shr 2,
+                        MeasureSpec.AT_MOST
+                    )
+                )
+
+            } else {
+
+                super.onMeasure(
+                    widthSpec,
+                    heightSpec
+                )
+            }
+        }
+    }
+
+    // --------------------------------------------------------
     // NOTES
     // --------------------------------------------------------
 
@@ -1745,7 +1685,7 @@ class MainActivity : Activity() {
             store.notes()
 
         val rv =
-            RecyclerView(this)
+            FullHeightRecyclerView(this)
 
         rv.layoutManager =
             LinearLayoutManager(this)
@@ -1756,6 +1696,8 @@ class MainActivity : Activity() {
         // Let the RecyclerView use only the height required by its content.
         // The page's outer ScrollView handles vertical scrolling.
         rv.isNestedScrollingEnabled = false
+        rv.setPadding(0, 0, 0, dp(12))
+        rv.clipToPadding = false
 
         content.addView(
             rv,
@@ -2728,7 +2670,7 @@ class MainActivity : Activity() {
             store.codes()
 
         val rv =
-            RecyclerView(this)
+            FullHeightRecyclerView(this)
 
         rv.layoutManager =
             LinearLayoutManager(this)
@@ -2741,6 +2683,8 @@ class MainActivity : Activity() {
         // Let the RecyclerView use only the height required by its content.
         // The page's outer ScrollView handles vertical scrolling.
         rv.isNestedScrollingEnabled = false
+        rv.setPadding(0, 0, 0, dp(12))
+        rv.clipToPadding = false
 
         content.addView(
             rv,
@@ -3129,7 +3073,7 @@ class MainActivity : Activity() {
             store.accounts()
 
         val rv =
-            RecyclerView(this)
+            FullHeightRecyclerView(this)
 
         rv.layoutManager =
             LinearLayoutManager(this)
@@ -3142,6 +3086,8 @@ class MainActivity : Activity() {
         // Let the RecyclerView use only the height required by its content.
         // The page's outer ScrollView handles vertical scrolling.
         rv.isNestedScrollingEnabled = false
+        rv.setPadding(0, 0, 0, dp(12))
+        rv.clipToPadding = false
 
         content.addView(
             rv,
@@ -3350,7 +3296,7 @@ class MainActivity : Activity() {
             store.files()
 
         val rv =
-            RecyclerView(this)
+            FullHeightRecyclerView(this)
 
         rv.layoutManager =
             LinearLayoutManager(this)
@@ -3363,6 +3309,8 @@ class MainActivity : Activity() {
         // Let the RecyclerView use only the height required by its content.
         // The page's outer ScrollView handles vertical scrolling.
         rv.isNestedScrollingEnabled = false
+        rv.setPadding(0, 0, 0, dp(12))
+        rv.clipToPadding = false
 
         content.addView(
             rv,
