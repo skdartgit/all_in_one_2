@@ -2755,7 +2755,6 @@ class MainActivity : Activity() {
             list
         ) {
             store.saveCodes(list)
-            ad.notifyDataSetChanged()
         }
     }
 
@@ -3157,7 +3156,6 @@ class MainActivity : Activity() {
             list
         ) {
             store.saveAccounts(list)
-            ad.notifyDataSetChanged()
         }
     }
 
@@ -3379,7 +3377,6 @@ class MainActivity : Activity() {
             list
         ) {
             store.saveFiles(list)
-            ad.notifyDataSetChanged()
         }
     }
 
