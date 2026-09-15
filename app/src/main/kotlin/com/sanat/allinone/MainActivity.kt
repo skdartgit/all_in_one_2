@@ -1824,10 +1824,14 @@ class MainActivity : Activity() {
     private fun row(): LinearLayout {
 
         val r =
-            LinearLayout(this)
-
-        r.orientation =
-            LinearLayout.VERTICAL
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams =
+                    RecyclerView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+            }
 
         bgView(
             r,
@@ -1842,10 +1846,15 @@ class MainActivity : Activity() {
         )
 
         val top =
-            LinearLayout(this)
-
-        top.gravity =
-            Gravity.CENTER_VERTICAL
+            LinearLayout(this).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams =
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+            }
 
         val t =
             tv("").apply {
