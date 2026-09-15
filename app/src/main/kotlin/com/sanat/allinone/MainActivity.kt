@@ -10,6 +10,7 @@ import android.util.Base64
 import android.text.*
 import android.text.style.ForegroundColorSpan
 import android.view.*
+import android.text.method.TransformationMethod
 import android.widget.*
 import androidx.core.content.FileProvider
 import androidx.recyclerview.widget.*
@@ -1074,6 +1075,44 @@ private fun highlightCode(
 
 class MainActivity : Activity() {
 
+    private class PinStarTransformation : TransformationMethod {
+
+        override fun getTransformation(
+            source: CharSequence,
+            view: View
+        ): CharSequence {
+
+            return object : CharSequence {
+
+                override val length: Int
+                    get() = source.length
+
+                override fun get(index: Int): Char = '*'
+
+                override fun subSequence(
+                    startIndex: Int,
+                    endIndex: Int
+                ): CharSequence =
+                    "*".repeat(
+                        (endIndex - startIndex).coerceAtLeast(0)
+                    )
+
+                override fun toString(): String =
+                    "*".repeat(source.length)
+            }
+        }
+
+        override fun onFocusChanged(
+            view: View,
+            sourceText: CharSequence,
+            focused: Boolean,
+            direction: Int,
+            previouslyFocusedRect: Rect?
+        ) {
+        }
+    }
+
+
     private lateinit var store: Store
     private lateinit var root: LinearLayout
     private lateinit var content: LinearLayout
@@ -1297,115 +1336,16 @@ class MainActivity : Activity() {
             edit(
                 "PIN"
             )
-        
+
         pin.inputType =
-            android.text.InputType.TYPE_CLASS_NUMBER
-        
+            android.text.InputType.TYPE_CLASS_NUMBER or
+            android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+
         pin.setSingleLine()
-        
+
+        // Always mask every PIN digit with a literal * character.
         pin.transformationMethod =
-            object : android.text.method.TransformationMethod {
-        
-                private var visibleUntil = 0L
-        
-                override fun getTransformation(
-                    source: CharSequence?,
-                    view: View?
-                ): CharSequence {
-        
-                    if (source == null) {
-                        return ""
-                    }
-        
-                    return object : CharSequence {
-        
-                        override val length: Int
-                            get() = source.length
-        
-                        override fun get(index: Int): Char {
-                            val now =
-                                android.os.SystemClock.uptimeMillis()
-        
-                            val lastIndex =
-                                source.length - 1
-        
-                            return if (
-                                index == lastIndex &&
-                                now < visibleUntil
-                            ) {
-                                source[index]
-                            } else {
-                                '*'
-                            }
-                        }
-        
-                        override fun subSequence(
-                            startIndex: Int,
-                            endIndex: Int
-                        ): CharSequence {
-        
-                            val result =
-                                StringBuilder()
-        
-                            for (
-                                i in startIndex until endIndex
-                            ) {
-                                result.append(get(i))
-                            }
-        
-                            return result.toString()
-                        }
-        
-                        override fun toString(): String {
-                            return subSequence(
-                                0,
-                                length
-                            ).toString()
-                        }
-                    }
-                }
-        
-                override fun onFocusChanged(
-                    view: View?,
-                    sourceText: CharSequence?,
-                    focused: Boolean,
-                    direction: Int,
-                    previouslyFocusedRect: android.graphics.Rect?
-                ) {
-                }
-            }
-        
-        pin.addTextChangedListener(
-            object : android.text.TextWatcher {
-        
-                override fun beforeTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    count: Int,
-                    after: Int
-                ) {
-                }
-        
-                override fun onTextChanged(
-                    s: CharSequence?,
-                    start: Int,
-                    before: Int,
-                    count: Int
-                ) {
-                    pin.postDelayed(
-                        {
-                            pin.invalidate()
-                        },
-                        1000
-                    )
-                }
-        
-                override fun afterTextChanged(
-                    s: android.text.Editable?
-                ) {
-                }
-            }
-        )
+            PinStarTransformation()
 
         box.addView(
             pin,
@@ -1771,6 +1711,52 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------------
+    // BORDERED LIST SECTION
+    // --------------------------------------------------------
+
+    private fun addBorderedList(
+        rv: RecyclerView
+    ) {
+
+        val listContainer =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background =
+                    GradientDrawable().apply {
+                        setColor(Color.TRANSPARENT)
+                        setStroke(
+                            dp(1),
+                            Color.BLACK
+                        )
+                        cornerRadius =
+                            dp(10).toFloat()
+                    }
+                setPadding(
+                    dp(2),
+                    dp(2),
+                    dp(2),
+                    dp(2)
+                )
+            }
+
+        listContainer.addView(
+            rv,
+            LinearLayout.LayoutParams(
+                -1,
+                -2
+            )
+        )
+
+        content.addView(
+            listContainer,
+            LinearLayout.LayoutParams(
+                -1,
+                -2
+            )
+        )
+    }
+
+    // --------------------------------------------------------
     // NOTES
     // --------------------------------------------------------
 
@@ -1802,13 +1788,7 @@ class MainActivity : Activity() {
         rv.setPadding(0, 0, 0, dp(12))
         rv.clipToPadding = false
 
-        content.addView(
-            rv,
-            LinearLayout.LayoutParams(
-                -1,
-                -2
-            )
-        )
+        addBorderedList(rv)
 
         // Long-press a saved note, drag it up/down, and release
         // to permanently save the new note order.
@@ -1944,6 +1924,11 @@ class MainActivity : Activity() {
         val r =
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
+                layoutParams =
+                    RecyclerView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
             }
     
         bgView(
@@ -1959,6 +1944,12 @@ class MainActivity : Activity() {
         val top =
             LinearLayout(this).apply {
                 gravity = Gravity.CENTER_VERTICAL
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams =
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
             }
     
         val t =
@@ -2789,13 +2780,7 @@ class MainActivity : Activity() {
         rv.setPadding(0, 0, 0, dp(12))
         rv.clipToPadding = false
 
-        content.addView(
-            rv,
-            LinearLayout.LayoutParams(
-                -1,
-                -2
-            )
-        )
+        addBorderedList(rv)
 
         attachDrag(
             rv,
@@ -3192,13 +3177,7 @@ class MainActivity : Activity() {
         rv.setPadding(0, 0, 0, dp(12))
         rv.clipToPadding = false
 
-        content.addView(
-            rv,
-            LinearLayout.LayoutParams(
-                -1,
-                -2
-            )
-        )
+        addBorderedList(rv)
 
         attachDrag(
             rv,
@@ -3239,17 +3218,23 @@ class MainActivity : Activity() {
                 accountDialog(a)
             }
 
+            // RecyclerView reuses ViewHolders. Always start an account
+            // row in its compact state so the first tap expands it,
+            // rather than unexpectedly shrinking it.
+            h.detail.text =
+                "UserID: ${a.user}\n" +
+                "Password: ${a.pass}\n" +
+                "Other-1: ${a.other1}\n" +
+                "Other-2: ${a.other2}"
+
+            h.detail.setTextIsSelectable(
+                true
+            )
+
+            h.detail.visibility =
+                View.GONE
+
             h.itemView.setOnClickListener {
-
-                h.detail.text =
-                    "UserID: ${a.user}\n" +
-                    "Password: ${a.pass}\n" +
-                    "Other-1: ${a.other1}\n" +
-                    "Other-2: ${a.other2}"
-
-                h.detail.setTextIsSelectable(
-                    true
-                )
 
                 h.detail.visibility =
                     if (
@@ -3415,13 +3400,7 @@ class MainActivity : Activity() {
         rv.setPadding(0, 0, 0, dp(12))
         rv.clipToPadding = false
 
-        content.addView(
-            rv,
-            LinearLayout.LayoutParams(
-                -1,
-                -2
-            )
-        )
+        addBorderedList(rv)
 
         attachDrag(
             rv,
