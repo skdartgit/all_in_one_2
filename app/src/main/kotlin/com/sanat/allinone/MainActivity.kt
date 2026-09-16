@@ -1832,7 +1832,16 @@ class MainActivity : Activity() {
                     RecyclerView.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
+                    ).apply {
+                        // Clear space between individual list cards,
+                        // matching the Investment Details asset layout.
+                        setMargins(
+                            dp(3),
+                            dp(5),
+                            dp(3),
+                            dp(5)
+                        )
+                    }
             }
 
         bgView(
@@ -1867,7 +1876,7 @@ class MainActivity : Activity() {
             t,
             LinearLayout.LayoutParams(
                 0,
-                dp(46),
+                dp(52),
                 1f
             )
         )
@@ -1881,7 +1890,7 @@ class MainActivity : Activity() {
             e,
             LinearLayout.LayoutParams(
                 dp(65),
-                dp(40)
+                dp(44)
             )
         )
 
@@ -1915,7 +1924,16 @@ class MainActivity : Activity() {
                     RecyclerView.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
+                    ).apply {
+                        // Clear space between individual list cards,
+                        // matching the Investment Details asset layout.
+                        setMargins(
+                            dp(3),
+                            dp(5),
+                            dp(3),
+                            dp(5)
+                        )
+                    }
             }
     
         bgView(
@@ -1954,7 +1972,7 @@ class MainActivity : Activity() {
             t,
             LinearLayout.LayoutParams(
                 0,
-                dp(46),
+                dp(52),
                 1f
             )
         )
@@ -1968,7 +1986,7 @@ class MainActivity : Activity() {
             e,
             LinearLayout.LayoutParams(
                 dp(65),
-                dp(40)
+                dp(44)
             )
         )
     
