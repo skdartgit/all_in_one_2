@@ -2258,7 +2258,14 @@ class MainActivity : Activity() {
         compactTitleRow()
 
     private fun fileRow(): LinearLayout =
-        compactTitleRow()
+        compactTitleRow().apply {
+            // My Files uses the same fixed 2-line title container as
+            // My Accounts. The shared compact row also contains the
+            // detail TextView for Accounts; hide it for Files so it
+            // cannot add extra blank height below the title section.
+            findViewById<TextView>(1003)?.visibility =
+                View.GONE
+        }
 
     private fun compactTitleRow(): LinearLayout {
         val r =
