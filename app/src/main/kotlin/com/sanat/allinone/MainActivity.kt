@@ -2254,6 +2254,102 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun accountRow(): LinearLayout =
+        compactTitleRow()
+
+    private fun fileRow(): LinearLayout =
+        compactTitleRow()
+
+    private fun compactTitleRow(): LinearLayout {
+        val r =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams =
+                    RecyclerView.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(
+                            dp(3),
+                            dp(5),
+                            dp(3),
+                            dp(5)
+                        )
+                    }
+            }
+
+        bgView(r, Color.WHITE, 12f)
+        (r.background as? GradientDrawable)?.setStroke(
+            dp(1),
+            Color.BLACK
+        )
+
+        val top =
+            LinearLayout(this).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams =
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+            }
+
+        val t =
+            tv("").apply {
+                id = 1001
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                gravity = Gravity.CENTER_VERTICAL
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            }
+
+        top.addView(
+            t,
+            LinearLayout.LayoutParams(
+                0,
+                dp(64),
+                1f
+            )
+        )
+
+        val e =
+            button("✎") {}.apply {
+                id = 1002
+            }
+
+        top.addView(
+            e,
+            LinearLayout.LayoutParams(
+                dp(65),
+                dp(44)
+            )
+        )
+
+        r.addView(top)
+
+        val d =
+            tv("").apply {
+                id = 1003
+            }
+        d.setTextIsSelectable(true)
+        d.setPadding(
+            dp(14),
+            0,
+            dp(14),
+            dp(12)
+        )
+        r.addView(
+            d,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        return r
+    }
+
     private inner class AccountAdapter(
         val data: MutableList<Account>
     ) : RecyclerView.Adapter<VH>() {
@@ -2262,7 +2358,7 @@ class MainActivity : Activity() {
             p: ViewGroup,
             t: Int
         ) =
-            VH(row())
+            VH(accountRow())
 
         override fun getItemCount() =
             data.size
@@ -2504,6 +2600,8 @@ class MainActivity : Activity() {
                     16f,
                     true
                 ).apply {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
                     setPadding(
                         dp(12),
                         0,
@@ -2518,7 +2616,7 @@ class MainActivity : Activity() {
                 folderTitle,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(58)
+                    dp(64)
                 )
             )
 
@@ -2729,7 +2827,7 @@ class MainActivity : Activity() {
             p: ViewGroup,
             t: Int
         ) =
-            VH(row())
+            VH(fileRow())
 
         override fun getItemCount() =
             data.size
