@@ -3729,29 +3729,23 @@ class MainActivity : Activity() {
             summary
         )
 
-        sectionButton(
-            "Add Asset"
-        ) {
-            assetDialog(null)
-        }
+        val assetHeading =
+            tv(
+                "Asset List",
+                17f,
+                true
+            )
 
-        sectionButton(
-            "Edit & Delete Asset"
-        ) {
-            assetManage()
-        }
+        assetHeading.setPadding(
+            dp(10),
+            dp(14),
+            dp(10),
+            dp(6)
+        )
 
-        sectionButton(
-            "Add Investment"
-        ) {
-            investmentDialog(null)
-        }
-
-        sectionButton(
-            "Edit & Delete Investment"
-        ) {
-            investmentManage()
-        }
+        content.addView(
+            assetHeading
+        )
 
         val assets =
             store.assets()
@@ -3761,32 +3755,133 @@ class MainActivity : Activity() {
 
         assets.forEach { a ->
 
-            val head =
-                LinearLayout(this)
+            val assetBox =
+                LinearLayout(this).apply {
+                    orientation =
+                        LinearLayout.VERTICAL
+
+                    layoutParams =
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(
+                                dp(3),
+                                dp(5),
+                                dp(3),
+                                dp(5)
+                            )
+                        }
+                }
 
             bgView(
-                head,
+                assetBox,
                 Color.WHITE,
                 12f
             )
 
-            val b =
+            // Thin black border around EACH asset.
+            (assetBox.background as? GradientDrawable)?.setStroke(
+                dp(1),
+                Color.BLACK
+            )
+
+            val top =
+                LinearLayout(this).apply {
+                    gravity =
+                        Gravity.CENTER_VERTICAL
+
+                    orientation =
+                        LinearLayout.HORIZONTAL
+
+                    layoutParams =
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        )
+                }
+
+            val title =
                 tv(
-                    "▣ ${a.name}  •  ${a.category}     ₹" +
-                        inv.filter {
-                            it.assetId == a.id
-                        }.sumOf {
-                            it.amount
-                        },
+                    "▣ ${a.name}",
                     15f,
                     true
                 )
 
-            head.addView(
-                b,
+            top.addView(
+                title,
                 LinearLayout.LayoutParams(
-                    -1,
-                    dp(46)
+                    0,
+                    dp(44),
+                    1f
+                )
+            )
+
+            val actions =
+                button(
+                    "+  🖊️  🗑️"
+                ) {
+                    assetInvestmentActions()
+                }
+
+            top.addView(
+                actions,
+                LinearLayout.LayoutParams(
+                    dp(110),
+                    dp(40)
+                )
+            )
+
+            assetBox.addView(top)
+
+            val category =
+                tv(
+                    "Asset Category: ${a.category}",
+                    14f,
+                    false
+                )
+
+            assetBox.addView(
+                category,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+
+            val value =
+                inv.filter {
+                    it.assetId == a.id
+                }.sumOf {
+                    it.amount
+                }
+
+            val valueView =
+                tv(
+                    "Value (₹. $value)",
+                    14f,
+                    true
+                ).apply {
+                    setTextColor(
+                        Color.rgb(
+                            34,
+                            139,
+                            34
+                        )
+                    )
+                    setPadding(
+                        dp(10),
+                        dp(5),
+                        dp(10),
+                        dp(12)
+                    )
+                }
+
+            assetBox.addView(
+                valueView,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
                 )
             )
 
@@ -3800,22 +3895,68 @@ class MainActivity : Activity() {
             detail.visibility =
                 View.GONE
 
-            head.setOnClickListener {
+            assetBox.setOnClickListener {
 
-                detail.text =
+                val entries =
                     inv.filter {
                         it.assetId == a.id
                     }
                         .sortedByDescending {
                             it.date
                         }
-                        .joinToString("\n") {
-                            "${it.date}   ₹${it.amount}"
-                        }
-                        .ifBlank {
-                            "No investments yet"
-                        }
 
+                if (entries.isEmpty()) {
+
+                    detail.text =
+                        "No investments yet"
+
+                } else {
+
+                    val sp =
+                        android.text.SpannableStringBuilder()
+
+                    entries.forEachIndexed { index, item ->
+
+                        sp.append(
+                            "${item.date}   "
+                        )
+
+                        val amountText =
+                            "₹${item.amount}"
+
+                        val start =
+                            sp.length
+
+                        sp.append(
+                            amountText
+                        )
+
+                        sp.setSpan(
+                            ForegroundColorSpan(
+                                Color.rgb(
+                                    34,
+                                    139,
+                                    34
+                                )
+                            ),
+                            start,
+                            sp.length,
+                            android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+
+                        if (
+                            index <
+                            entries.lastIndex
+                        ) {
+                            sp.append("\n")
+                        }
+                    }
+
+                    detail.text = sp
+                }
+
+                // Keep the action button responsive when the
+                // asset row itself is tapped.
                 detail.visibility =
                     if (
                         detail.visibility ==
@@ -3826,9 +3967,45 @@ class MainActivity : Activity() {
                         View.VISIBLE
             }
 
-            content.addView(head)
-            content.addView(detail)
+            assetBox.addView(detail)
+
+            content.addView(
+                assetBox
+            )
         }
+    }
+
+    private fun assetInvestmentActions() {
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "Investment"
+            )
+            .setItems(
+                arrayOf(
+                    "Add Investment",
+                    "Edit Investment",
+                    "Delete Investment"
+                )
+            ) { _, which ->
+
+                when (which) {
+
+                    0 ->
+                        investmentDialog(null)
+
+                    1 ->
+                        investmentManage(
+                            deleteOnly = false
+                        )
+
+                    2 ->
+                        investmentManage(
+                            deleteOnly = true
+                        )
+                }
+            }
+            .show()
     }
 
     private fun assetDialog(
@@ -4126,7 +4303,9 @@ class MainActivity : Activity() {
             .show()
     }
 
-    private fun investmentManage() {
+    private fun investmentManage(
+        deleteOnly: Boolean = false
+    ) {
 
         val l =
             store.investments()
@@ -4159,25 +4338,22 @@ class MainActivity : Activity() {
 
         AlertDialog.Builder(this)
             .setTitle(
-                "Edit / Delete Investment"
+                if (deleteOnly)
+                    "Delete Investment"
+                else
+                    "Edit / Delete Investment"
             )
             .setItems(names) { _, i ->
 
-                AlertDialog.Builder(this)
-                    .setItems(
-                        arrayOf(
-                            "Edit",
-                            "Delete"
+                if (deleteOnly) {
+
+                    AlertDialog.Builder(this)
+                        .setMessage(
+                            "Delete this investment permanently?"
                         )
-                    ) { _, x ->
-
-                        if (x == 0) {
-
-                            investmentDialog(
-                                l[i]
-                            )
-
-                        } else {
+                        .setPositiveButton(
+                            "Delete"
+                        ) { _, _ ->
 
                             l.removeAt(i)
 
@@ -4187,8 +4363,41 @@ class MainActivity : Activity() {
 
                             investmentPage()
                         }
-                    }
-                    .show()
+                        .setNegativeButton(
+                            "Cancel",
+                            null
+                        )
+                        .show()
+
+                } else {
+
+                    AlertDialog.Builder(this)
+                        .setItems(
+                            arrayOf(
+                                "Edit",
+                                "Delete"
+                            )
+                        ) { _, x ->
+
+                            if (x == 0) {
+
+                                investmentDialog(
+                                    l[i]
+                                )
+
+                            } else {
+
+                                l.removeAt(i)
+
+                                store.saveInvestments(
+                                    l
+                                )
+
+                                investmentPage()
+                            }
+                        }
+                        .show()
+                }
             }
             .show()
     }
@@ -4431,6 +4640,18 @@ class MainActivity : Activity() {
 
                 controlPage()
             }
+        }
+
+        sectionButton(
+            "Add Asset"
+        ) {
+            assetDialog(null)
+        }
+
+        sectionButton(
+            "Edit & Delete Asset"
+        ) {
+            assetManage()
         }
 
         sectionButton(
