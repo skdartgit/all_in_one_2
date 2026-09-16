@@ -3674,6 +3674,21 @@ class MainActivity : Activity() {
     // INVESTMENTS
     // --------------------------------------------------------
 
+    private fun investmentDate(
+        value: String
+    ): Date? {
+        return try {
+            SimpleDateFormat(
+                DATE_FMT,
+                Locale.US
+            ).apply {
+                isLenient = false
+            }.parse(value.trim())
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun investmentPage() {
 
         clear(
@@ -3821,7 +3836,7 @@ class MainActivity : Activity() {
                 button(
                     "+  🖊️  🗑️"
                 ) {
-                    assetInvestmentActions()
+                    assetInvestmentActions(a.id)
                 }
 
             top.addView(
@@ -3901,9 +3916,12 @@ class MainActivity : Activity() {
                     inv.filter {
                         it.assetId == a.id
                     }
-                        .sortedByDescending {
-                            it.date
-                        }
+                        .sortedWith(
+                            compareByDescending {
+                                investmentDate(it.date)
+                                    ?: Date(0)
+                            }
+                        )
 
                 if (entries.isEmpty()) {
 
@@ -3975,11 +3993,25 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun assetInvestmentActions() {
+    private fun assetInvestmentActions(
+        assetId: Long
+    ) {
+
+        val asset =
+            store.assets()
+                .find {
+                    it.id == assetId
+                }
+
+        if (asset == null) {
+            toast("Asset not found")
+            investmentPage()
+            return
+        }
 
         AlertDialog.Builder(this)
             .setTitle(
-                "Investment"
+                "Investment • ${asset.name}"
             )
             .setItems(
                 arrayOf(
@@ -3992,15 +4024,20 @@ class MainActivity : Activity() {
                 when (which) {
 
                     0 ->
-                        investmentDialog(null)
+                        investmentDialog(
+                            old = null,
+                            assetId = assetId
+                        )
 
                     1 ->
                         investmentManage(
+                            assetId = assetId,
                             deleteOnly = false
                         )
 
                     2 ->
                         investmentManage(
+                            assetId = assetId,
                             deleteOnly = true
                         )
                 }
@@ -4170,18 +4207,21 @@ class MainActivity : Activity() {
     }
 
     private fun investmentDialog(
-        old: Investment?
+        old: Investment?,
+        assetId: Long
     ) {
 
-        val assets =
+        val asset =
             store.assets()
+                .find {
+                    it.id == assetId
+                }
 
-        if (assets.isEmpty()) {
-
+        if (asset == null) {
             toast(
-                "Add an asset first"
+                "Asset not found"
             )
-
+            investmentPage()
             return
         }
 
@@ -4191,29 +4231,19 @@ class MainActivity : Activity() {
         box.orientation =
             LinearLayout.VERTICAL
 
-        val s =
-            Spinner(this)
-
-        s.adapter =
-            ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
-                assets.map {
-                    it.name
-                }
-            )
-
-        old?.let {
-
-            val ix =
-                assets.indexOfFirst {
-                    it.id == old.assetId
-                }
-
-            if (ix >= 0) {
-                s.setSelection(ix)
+        val assetView =
+            tv(
+                "Asset: ${asset.name}",
+                15f,
+                true
+            ).apply {
+                setPadding(
+                    dp(10),
+                    dp(10),
+                    dp(10),
+                    dp(6)
+                )
             }
-        }
 
         val d =
             edit(
@@ -4228,7 +4258,7 @@ class MainActivity : Activity() {
                     ?: ""
             )
 
-        box.addView(s)
+        box.addView(assetView)
         box.addView(d)
         box.addView(am)
 
@@ -4241,11 +4271,6 @@ class MainActivity : Activity() {
             )
             .setView(box)
             .setPositiveButton("Save") { _, _ ->
-
-                val a =
-                    assets[
-                        s.selectedItemPosition
-                    ]
 
                 val l =
                     store.investments()
@@ -4262,7 +4287,7 @@ class MainActivity : Activity() {
                             store.id(
                                 "investment"
                             ),
-                            a.id,
+                            assetId,
                             d.text.toString()
                                 .ifBlank {
                                     dateNow()
@@ -4274,7 +4299,7 @@ class MainActivity : Activity() {
                 } else {
 
                     old.assetId =
-                        a.id
+                        assetId
 
                     old.date =
                         d.text.toString()
@@ -4304,46 +4329,58 @@ class MainActivity : Activity() {
     }
 
     private fun investmentManage(
+        assetId: Long,
         deleteOnly: Boolean = false
     ) {
 
         val l =
             store.investments()
+                .filter {
+                    it.assetId == assetId
+                }
+                .sortedWith(
+                    compareByDescending {
+                        investmentDate(it.date)
+                            ?: Date(0)
+                    }
+                )
+                .toMutableList()
 
         if (l.isEmpty()) {
 
             toast(
-                "No investments"
+                if (deleteOnly)
+                    "No investments for this asset"
+                else
+                    "No investments for this asset"
             )
 
             return
         }
 
-        val assets =
+        val assetName =
             store.assets()
+                .find {
+                    it.id == assetId
+                }
+                ?.name
+                ?: "Asset"
 
         val names =
             l.map {
-
-                val a =
-                    assets.find {
-                        x ->
-                        x.id == it.assetId
-                    }
-
-                "${a?.name ?: "Deleted asset"} • " +
-                    "${it.date} • ₹${it.amount}"
-
+                "${it.date} • ₹${it.amount}"
             }.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle(
                 if (deleteOnly)
-                    "Delete Investment"
+                    "Delete Investment • $assetName"
                 else
-                    "Edit / Delete Investment"
+                    "Edit / Delete Investment • $assetName"
             )
             .setItems(names) { _, i ->
+
+                val selected = l[i]
 
                 if (deleteOnly) {
 
@@ -4355,10 +4392,15 @@ class MainActivity : Activity() {
                             "Delete"
                         ) { _, _ ->
 
-                            l.removeAt(i)
+                            val all =
+                                store.investments()
+
+                            all.removeAll {
+                                it.id == selected.id
+                            }
 
                             store.saveInvestments(
-                                l
+                                all
                             )
 
                             investmentPage()
@@ -4382,15 +4424,21 @@ class MainActivity : Activity() {
                             if (x == 0) {
 
                                 investmentDialog(
-                                    l[i]
+                                    old = selected,
+                                    assetId = assetId
                                 )
 
                             } else {
 
-                                l.removeAt(i)
+                                val all =
+                                    store.investments()
+
+                                all.removeAll {
+                                    it.id == selected.id
+                                }
 
                                 store.saveInvestments(
-                                    l
+                                    all
                                 )
 
                                 investmentPage()
