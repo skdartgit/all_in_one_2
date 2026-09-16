@@ -2721,6 +2721,11 @@ class MainActivity : Activity() {
                 }
             }
 
+            // Folders are collapsed by default. The user can tap the
+            // folder title to expand and see its files.
+            folderContent.visibility =
+                View.GONE
+
             folderBox.addView(
                 folderContent
             )
