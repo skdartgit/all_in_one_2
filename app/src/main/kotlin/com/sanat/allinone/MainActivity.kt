@@ -490,8 +490,31 @@ private class Store(
         put("angels", a)
     }
 
+    /*
+     * ID namespaces must use the exact same keys as the stored JSON arrays.
+     * Older code requested singular keys ("asset", "investment", etc.)
+     * while the actual arrays are plural ("assets", "investments", ...).
+     * That made every new item start from a separate counter and could reuse
+     * an existing ID. Reusing an Asset ID makes its investments appear under
+     * the newly-created Asset.
+     *
+     * Always map singular request names to the real storage keys before
+     * generating an ID.
+     */
+    private fun idKey(k: String): String =
+        when (k) {
+            "note" -> "notes"
+            "code" -> "codes"
+            "account" -> "accounts"
+            "file" -> "files"
+            "asset" -> "assets"
+            "investment" -> "investments"
+            "angel" -> "angels"
+            else -> k
+        }
+
     fun id(k: String): Long =
-        next(k)
+        next(idKey(k))
 
     fun raw(): JSONObject =
         JSONObject().apply {
