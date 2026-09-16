@@ -30,14 +30,6 @@ private data class Note(
     var desc: String
 )
 
-private data class CodeItem(
-    var id: Long,
-    var title: String,
-    var desc: String,
-    var lang: String,
-    var code: String
-)
-
 private data class Account(
     var id: Long,
     var name: String,
@@ -47,12 +39,18 @@ private data class Account(
     var other2: String
 )
 
+private data class SavedFolder(
+    var id: Long,
+    var name: String
+)
+
 private data class SavedFile(
     var id: Long,
     var title: String,
     var fileName: String,
     var path: String,
-    var mime: String
+    var mime: String,
+    var folderId: Long = 0L
 )
 
 private data class Asset(
@@ -83,6 +81,14 @@ private class Store(
             PREF,
             Context.MODE_PRIVATE
         )
+
+    init {
+        // Clear its old database and ID counter from previous versions.
+        p.edit()
+            .remove("codes")
+            .remove("next_codes")
+            .apply()
+    }
 
     private fun arr(k: String): JSONArray =
         try {
@@ -166,9 +172,9 @@ private class Store(
         val keys =
             arrayOf(
                 "notes",
-                "codes",
                 "accounts",
                 "files",
+                "folders",
                 "assets",
                 "investments",
                 "angels"
@@ -279,42 +285,6 @@ private class Store(
         put("notes", a)
     }
 
-    fun codes(): MutableList<CodeItem> {
-        val a = arr("codes")
-
-        return MutableList(a.length()) {
-            val o = a.getJSONObject(it)
-
-            CodeItem(
-                o.getLong("id"),
-                o.getString("title"),
-                o.optString("desc"),
-                o.optString("lang", "Kotlin"),
-                o.optString("code")
-            )
-        }
-    }
-
-    fun saveCodes(
-        x: List<CodeItem>
-    ) {
-        val a = JSONArray()
-
-        x.forEach {
-            a.put(
-                JSONObject().apply {
-                    put("id", it.id)
-                    put("title", it.title)
-                    put("desc", it.desc)
-                    put("lang", it.lang)
-                    put("code", it.code)
-                }
-            )
-        }
-
-        put("codes", a)
-    }
-
     fun accounts(): MutableList<Account> {
         val a = arr("accounts")
 
@@ -367,7 +337,8 @@ private class Store(
                 o.optString(
                     "mime",
                     "application/octet-stream"
-                )
+                ),
+                o.optLong("folderId", 0L)
             )
         }
     }
@@ -385,11 +356,42 @@ private class Store(
                     put("fileName", it.fileName)
                     put("path", it.path)
                     put("mime", it.mime)
+                    put("folderId", it.folderId)
                 }
             )
         }
 
         put("files", a)
+    }
+
+    fun folders(): MutableList<SavedFolder> {
+        val a = arr("folders")
+
+        return MutableList(a.length()) {
+            val o = a.getJSONObject(it)
+
+            SavedFolder(
+                o.getLong("id"),
+                o.optString("name", "Untitled Folder")
+            )
+        }
+    }
+
+    fun saveFolders(
+        x: List<SavedFolder>
+    ) {
+        val a = JSONArray()
+
+        x.forEach {
+            a.put(
+                JSONObject().apply {
+                    put("id", it.id)
+                    put("name", it.name)
+                }
+            )
+        }
+
+        put("folders", a)
     }
 
     fun assets(): MutableList<Asset> {
@@ -491,22 +493,15 @@ private class Store(
     }
 
     /*
-     * ID namespaces must use the exact same keys as the stored JSON arrays.
-     * Older code requested singular keys ("asset", "investment", etc.)
-     * while the actual arrays are plural ("assets", "investments", ...).
-     * That made every new item start from a separate counter and could reuse
-     * an existing ID. Reusing an Asset ID makes its investments appear under
-     * the newly-created Asset.
-     *
-     * Always map singular request names to the real storage keys before
-     * generating an ID.
+     * ID namespaces use the exact same keys as the stored JSON arrays.
+     * This prevents ID reuse after restore or app upgrades.
      */
     private fun idKey(k: String): String =
         when (k) {
             "note" -> "notes"
-            "code" -> "codes"
             "account" -> "accounts"
             "file" -> "files"
+            "folder" -> "folders"
             "asset" -> "assets"
             "investment" -> "investments"
             "angel" -> "angels"
@@ -521,7 +516,7 @@ private class Store(
 
             put(
                 "version",
-                2
+                3
             )
 
             put(
@@ -535,13 +530,13 @@ private class Store(
             )
 
             put(
-                "codes",
-                arr("codes")
+                "accounts",
+                arr("accounts")
             )
 
             put(
-                "accounts",
-                arr("accounts")
+                "folders",
+                arr("folders")
             )
 
             val fa = JSONArray()
@@ -569,6 +564,11 @@ private class Store(
                         put(
                             "mime",
                             f.mime
+                        )
+
+                        put(
+                            "folderId",
+                            f.folderId
                         )
 
                         put(
@@ -623,11 +623,11 @@ private class Store(
 
         listOf(
             "notes",
-            "codes",
             "accounts",
             "assets",
             "investments",
-            "angels"
+            "angels",
+            "folders"
         ).forEach {
             put(
                 it,
@@ -716,6 +716,14 @@ private class Store(
                     )
 
                     put(
+                        "folderId",
+                        x.optLong(
+                            "folderId",
+                            0L
+                        )
+                    )
+
+                    put(
                         "path",
                         f.absolutePath
                     )
@@ -729,480 +737,6 @@ private class Store(
         )
     }
 }
-
-private class CodeEditText(
-    c: Context
-) : EditText(c) {
-
-    private var busy = false
-
-    /*
-     * Once the user manually scrolls vertically, keep that vertical
-     * position while typing. Horizontal cursor movement is still allowed.
-     */
-    private var userHasScrolled = false
-    private var touchDownY = 0f
-    private var dragging = false
-    private val touchSlop =
-        ViewConfiguration.get(c).scaledTouchSlop
-
-    var language: String = "Kotlin"
-
-    init {
-
-        setTextSize(14f)
-
-        setTypeface(
-            Typeface.MONOSPACE
-        )
-
-        setPadding(
-            18,
-            18,
-            18,
-            18
-        )
-
-        gravity =
-            Gravity.TOP or Gravity.START
-
-        inputType =
-            android.text.InputType.TYPE_CLASS_TEXT or
-            android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-            android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-
-        setHorizontallyScrolling(true)
-
-        setTextIsSelectable(true)
-
-        addTextChangedListener(
-            object : TextWatcher {
-
-                override fun beforeTextChanged(
-                    s: CharSequence?,
-                    st: Int,
-                    c: Int,
-                    a: Int
-                ) {
-                }
-
-                override fun onTextChanged(
-                    s: CharSequence?,
-                    st: Int,
-                    b: Int,
-                    c: Int
-                ) {
-                    if (!busy) {
-                        highlight()
-                    }
-                }
-
-                override fun afterTextChanged(
-                    e: Editable?
-                ) {
-
-                    if (busy || e == null) {
-                        return
-                    }
-
-                    if (
-                        e.isNotEmpty() &&
-                        e[e.length - 1] == '\n'
-                    ) {
-
-                        busy = true
-
-                        val before =
-                            e.toString()
-                                .dropLast(1)
-                                .substringAfterLast('\n')
-
-                        val n =
-                            Regex(
-                                "^[ \\t]*"
-                            )
-                                .find(before)
-                                ?.value
-                                ?.length
-                                ?: 0
-
-                        val extra =
-                            if (
-                                before
-                                    .trimEnd()
-                                    .endsWith("{") ||
-                                before
-                                    .trimEnd()
-                                    .endsWith(":")
-                            ) {
-                                4
-                            } else {
-                                0
-                            }
-
-                        e.insert(
-                            e.length,
-                            " ".repeat(
-                                n + extra
-                            )
-                        )
-
-                        busy = false
-                    }
-                }
-            }
-        )
-    }
-
-    override fun onTouchEvent(
-        event: MotionEvent
-    ): Boolean {
-
-        when (event.actionMasked) {
-
-            MotionEvent.ACTION_DOWN -> {
-                touchDownY = event.y
-                dragging = false
-
-                parent?.requestDisallowInterceptTouchEvent(
-                    true
-                )
-            }
-
-            MotionEvent.ACTION_MOVE -> {
-
-                if (
-                    !dragging &&
-                    kotlin.math.abs(
-                        event.y - touchDownY
-                    ) > touchSlop
-                ) {
-                    dragging = true
-                    userHasScrolled = true
-                }
-
-                parent?.requestDisallowInterceptTouchEvent(
-                    true
-                )
-            }
-
-            MotionEvent.ACTION_UP,
-            MotionEvent.ACTION_CANCEL -> {
-                parent?.requestDisallowInterceptTouchEvent(
-                    false
-                )
-            }
-        }
-
-        return super.onTouchEvent(event)
-    }
-
-    /*
-     * Preserve the manually chosen vertical position, but let Android
-     * move the cursor horizontally so long lines remain visible.
-     */
-    override fun bringPointIntoView(
-        offset: Int
-    ): Boolean {
-
-        if (userHasScrolled) {
-
-            val lockedY = scrollY
-
-            val result =
-                super.bringPointIntoView(
-                    offset
-                )
-
-            scrollTo(
-                scrollX,
-                lockedY
-            )
-
-            post {
-                scrollTo(
-                    scrollX,
-                    lockedY
-                )
-            }
-
-            return result
-        }
-
-        return super.bringPointIntoView(
-            offset
-        )
-    }
-
-    fun highlight() {
-
-        if (busy) {
-            return
-        }
-
-        val s =
-            text.toString()
-
-        val sp =
-            highlightCode(
-                s,
-                language
-            )
-
-        val pos =
-            selectionStart
-
-        val oldScrollX =
-            scrollX
-
-        val oldScrollY =
-            scrollY
-
-        busy = true
-
-        setText(
-            sp,
-            TextView.BufferType.SPANNABLE
-        )
-
-        setSelection(
-            pos.coerceAtMost(
-                length()
-            )
-        )
-
-        busy = false
-
-        post {
-            scrollTo(
-                oldScrollX,
-                oldScrollY
-            )
-        }
-    }
-}
-
-private fun highlightCode(
-    s: String,
-    language: String
-): SpannableString {
-
-    val sp =
-        SpannableString(s)
-
-    fun col(
-        regex: Regex,
-        color: Int
-    ) {
-        regex.findAll(s).forEach {
-            if (it.range.first <= it.range.last) {
-                sp.setSpan(
-                    ForegroundColorSpan(color),
-                    it.range.first,
-                    it.range.last + 1,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-        }
-    }
-
-    val keywordColor =
-        Color.rgb(75, 55, 180)
-
-    val commentColor =
-        Color.rgb(90, 90, 90)
-
-    val stringColor =
-        Color.rgb(170, 65, 40)
-
-    val tagColor =
-        Color.rgb(0, 110, 130)
-
-    val numberColor =
-        Color.rgb(0, 125, 95)
-
-    val annotationColor =
-        Color.rgb(125, 70, 150)
-
-    val lang =
-        language.trim().lowercase(
-            Locale.US
-        )
-
-    val keywords =
-        when (lang) {
-
-            "python" ->
-                "\\b(and|as|assert|async|await|break|case|class|continue|def|del|elif|else|except|finally|for|from|global|if|import|in|is|lambda|match|nonlocal|not|or|pass|raise|return|try|while|with|yield|True|False|None|self|print)\\b"
-
-            "kotlin" ->
-                "\\b(as|break|class|continue|data|do|else|false|for|fun|if|in|interface|is|lateinit|object|null|open|override|package|private|protected|public|return|sealed|super|this|throw|true|try|typealias|typeof|val|var|vararg|when|while|by|catch|constructor|delegate|dynamic|field|file|finally|get|import|init|param|property|receiver|set|setparam|where|actual|abstract|annotation|companion|const|crossinline|expect|external|final|infix|inline|inner|internal|noinline|out|operator|reified|suspend|tailrec|value|it)\\b"
-
-            "java" ->
-                "\\b(abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|if|implements|import|instanceof|int|interface|long|native|new|null|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|true|false|try|void|volatile|while|var|record|sealed|permits|yield)\\b"
-
-            "javascript" ->
-                "\\b(await|break|case|catch|class|const|continue|debugger|default|delete|do|else|export|extends|false|finally|for|function|if|import|in|instanceof|let|new|null|return|static|super|switch|this|throw|true|try|typeof|var|void|while|with|yield|async|of|get|set)\\b"
-
-            "c", "c++" ->
-                "\\b(auto|bool|break|case|catch|char|class|const|constexpr|continue|default|delete|do|double|else|enum|explicit|extern|false|float|for|friend|if|inline|int|long|namespace|new|nullptr|operator|private|protected|public|register|return|short|signed|sizeof|static|struct|switch|template|this|throw|true|try|typedef|typename|union|unsigned|using|virtual|void|volatile|while)\\b"
-
-            "sql" ->
-                "\\b(SELECT|FROM|WHERE|INSERT|INTO|VALUES|UPDATE|SET|DELETE|CREATE|ALTER|DROP|TABLE|DATABASE|INDEX|JOIN|INNER|LEFT|RIGHT|FULL|OUTER|ON|AS|AND|OR|NOT|NULL|IS|IN|LIKE|BETWEEN|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|DISTINCT|UNION|ALL|PRIMARY|KEY|FOREIGN|REFERENCES|DEFAULT|CASE|WHEN|THEN|ELSE|END|COUNT|SUM|AVG|MIN|MAX)\\b"
-
-            "shell" ->
-                "\\b(if|then|else|elif|fi|for|while|in|do|done|case|esac|function|select|until|time|export|local|readonly|return|source|echo|printf|cd|pwd|exit|true|false)\\b"
-
-            "json" ->
-                "\\b(true|false|null)\\b"
-
-            "css" ->
-                "\\b(display|position|top|right|bottom|left|width|height|margin|padding|border|color|background|font|font-size|font-family|flex|grid|content|align-items|justify-content|overflow|opacity|z-index|transform|transition|animation)\\b"
-
-            "html", "xml" ->
-                ""
-
-            else ->
-                "\\b(fun|val|var|class|object|interface|if|else|when|for|while|return|import|package|public|private|protected|static|void|new|def|print|function|const|let|async|await)\\b"
-        }
-
-    if (keywords.isNotEmpty()) {
-        col(
-            Regex(
-                keywords,
-                if (lang == "sql")
-                    setOf(RegexOption.IGNORE_CASE)
-                else
-                    emptySet()
-            ),
-            keywordColor
-        )
-    }
-
-    when (lang) {
-
-        "python", "shell" -> {
-            col(
-                Regex(
-                    "#.*$",
-                    RegexOption.MULTILINE
-                ),
-                commentColor
-            )
-        }
-
-        "html", "xml" -> {
-            col(
-                Regex(
-                    "<!--[\\s\\S]*?-->"
-                ),
-                commentColor
-            )
-        }
-
-        "sql" -> {
-            col(
-                Regex(
-                    "--.*$|/\\*[\\s\\S]*?\\*/",
-                    RegexOption.MULTILINE
-                ),
-                commentColor
-            )
-        }
-
-        "css" -> {
-            col(
-                Regex(
-                    "/\\*[\\s\\S]*?\\*/"
-                ),
-                commentColor
-            )
-        }
-
-        else -> {
-            col(
-                Regex(
-                    "//.*$|/\\*[\\s\\S]*?\\*/",
-                    RegexOption.MULTILINE
-                ),
-                commentColor
-            )
-        }
-    }
-
-    col(
-        Regex(
-            "\"([^\"\\\\]|\\\\.)*\"|'([^'\\\\]|\\\\.)*'"
-        ),
-        stringColor
-    )
-
-    if (
-        lang == "html" ||
-        lang == "xml"
-    ) {
-        col(
-            Regex(
-                "</?[A-Za-z][^>]*>|<!DOCTYPE[^>]*>",
-                setOf(
-                    RegexOption.IGNORE_CASE
-                )
-            ),
-            tagColor
-        )
-    }
-
-    if (lang == "css") {
-        col(
-            Regex(
-                "#[0-9a-fA-F]{3,8}\\b"
-            ),
-            stringColor
-        )
-    }
-
-    if (lang == "json") {
-        col(
-            Regex(
-                "\"([^\"\\\\]|\\\\.)*\"(?=\\s*:)"
-            ),
-            tagColor
-        )
-    }
-
-    if (lang == "shell") {
-        col(
-            Regex(
-                "\\$[A-Za-z_][A-Za-z0-9_]*|\\$\\{[^}]+\\}"
-            ),
-            annotationColor
-        )
-    }
-
-    if (
-        lang == "python" ||
-        lang == "kotlin" ||
-        lang == "java" ||
-        lang == "javascript"
-    ) {
-        col(
-            Regex(
-                "@[A-Za-z_][A-Za-z0-9_.]*"
-            ),
-            annotationColor
-        )
-    }
-
-    col(
-        Regex(
-            "\\b(?:0x[0-9A-Fa-f]+|\\d+(?:\\.\\d+)?)\\b"
-        ),
-        numberColor
-    )
-
-    return sp
-}
-
 
 class MainActivity : Activity() {
 
@@ -1258,7 +792,6 @@ class MainActivity : Activity() {
     private val tabs =
         arrayOf(
             "My Notes",
-            "My Coding",
             "My Accounts",
             "My Files",
             "Investment Details",
@@ -1675,7 +1208,7 @@ class MainActivity : Activity() {
                 b,
                 LinearLayout.LayoutParams(
                     dp(
-                        if (i == 4)
+                        if (s.length >= 16)
                             180
                         else
                             125
@@ -1768,12 +1301,11 @@ class MainActivity : Activity() {
         when (i) {
 
             0 -> notesPage()
-            1 -> codesPage()
-            2 -> accountsPage()
-            3 -> filesPage()
-            4 -> investmentPage()
-            5 -> backupPage()
-            6 -> controlPage()
+            1 -> accountsPage()
+            2 -> filesPage()
+            3 -> investmentPage()
+            4 -> backupPage()
+            5 -> controlPage()
         }
     }
 
@@ -2056,232 +1588,6 @@ class MainActivity : Activity() {
         return r
     }
 
-    private fun codeRow(): LinearLayout {
-    
-        val r =
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams =
-                    RecyclerView.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        // Clear space between individual list cards,
-                        // matching the Investment Details asset layout.
-                        setMargins(
-                            dp(3),
-                            dp(5),
-                            dp(3),
-                            dp(5)
-                        )
-                    }
-            }
-    
-        bgView(
-            r,
-            Color.WHITE,
-            12f
-        )
-
-        // Thin black border around EACH code item.
-        (r.background as? GradientDrawable)?.setStroke(
-            dp(1),
-            Color.BLACK
-        )
-    
-        // --------------------------------------------------------
-        // CODE TITLE
-        // --------------------------------------------------------
-    
-        val top =
-            LinearLayout(this).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                orientation = LinearLayout.HORIZONTAL
-                layoutParams =
-                    LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-            }
-    
-        val t =
-            tv("").apply {
-                id = 1001
-                // Title section is tall enough to clearly display at least
-                // three lines of a long title.
-                maxLines = 3
-                ellipsize = TextUtils.TruncateAt.END
-                gravity = Gravity.CENTER_VERTICAL
-                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
-            }
-    
-        top.addView(
-            t,
-            LinearLayout.LayoutParams(
-                0,
-                dp(96),
-                1f
-            )
-        )
-    
-        val e =
-            button("✎") {}.apply {
-                id = 1002
-            }
-    
-        top.addView(
-            e,
-            LinearLayout.LayoutParams(
-                dp(65),
-                dp(44)
-            )
-        )
-    
-        r.addView(top)
-    
-        // --------------------------------------------------------
-        // DETAILS CONTAINER
-        // --------------------------------------------------------
-    
-        val details =
-            LinearLayout(this).apply {
-                id = 1007
-                orientation = LinearLayout.VERTICAL
-                visibility = View.GONE
-                setPadding(
-                    dp(14),
-                    dp(4),
-                    dp(14),
-                    dp(12)
-                )
-            }
-    
-        // --------------------------------------------------------
-        // CODE DESCRIPTION
-        // --------------------------------------------------------
-    
-        val descLabel =
-            tv(
-                "Code Description",
-                14f,
-                true
-            )
-    
-        details.addView(descLabel)
-    
-        val desc =
-            tv("").apply {
-                id = 1005
-                typeface = Typeface.DEFAULT
-                isSingleLine = false
-                setHorizontallyScrolling(false)
-                setPadding(
-                    0,
-                    dp(4),
-                    0,
-                    dp(14)
-                )
-            }
-    
-        details.addView(
-            desc,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-    
-        // --------------------------------------------------------
-        // ORIGINAL CODE
-        // --------------------------------------------------------
-    
-        val codeLabel =
-            tv(
-                "Original Code",
-                14f,
-                true
-            )
-    
-        details.addView(codeLabel)
-    
-        val hs =
-            HorizontalScrollView(this).apply {
-                isHorizontalScrollBarEnabled = true
-                isFillViewport = false
-                overScrollMode =
-                    View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            }
-    
-        val code =
-            tv("").apply {
-                id = 1006
-                typeface = Typeface.MONOSPACE
-                setHorizontallyScrolling(true)
-                isSingleLine = false
-                setTextIsSelectable(true)
-    
-                setPadding(
-                    0,
-                    dp(4),
-                    dp(14),
-                    dp(12)
-                )
-    
-                layoutParams =
-                    ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-            }
-    
-        hs.addView(code)
-    
-        details.addView(
-            hs,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-    
-        r.addView(
-            details,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
-    
-        return r
-    }
-
-
-    /*
-     * Rich description support.
-     *
-     * Descriptions are still stored as String, so the existing data format
-     * remains compatible. Bold and underline are stored as small inline
-     * markers and converted back to Android spans when displayed/edited.
-     *
-     * The toolbar formats the complete current line, as requested.
-     */
-    /*
-     * Rich description support.
-     *
-     * Text is still stored as String. Bold and underline are represented
-     * by inline [b]/[/b] and [u]/[/u] markers so existing saved data remains
-     * usable. Version 9 fixes toolbar focus/selection handling and formats
-     * the exact selected text.
-     *
-     * B / U / B+U:
-     *   - Single tap  -> apply formatting to the selected range.
-     *   - No selection -> apply to the current line.
-     *   - Double tap on the same toolbar button -> remove that formatting
-     *     from the same selected range (or current line).
-     *
-     * The toolbar buttons never take focus. Their touch events are handled
-     * directly, so tapping them cannot collapse the editor selection.
-     */
     private fun descriptionToSpanned(
         value: String
     ): SpannableString {
@@ -2905,403 +2211,6 @@ class MainActivity : Activity() {
     }
 
     // --------------------------------------------------------
-    // CODING
-    // --------------------------------------------------------
-
-    private fun codesPage() {
-
-        clear("My Coding")
-
-        sectionButton(
-            "Write Code"
-        ) {
-            codeDialog(null)
-        }
-
-        val list =
-            store.codes()
-
-        val rv =
-            FullHeightRecyclerView(this)
-
-        rv.layoutManager =
-            LinearLayoutManager(this)
-
-        val ad =
-            CodeAdapter(list)
-
-        rv.adapter = ad
-
-        // Let the RecyclerView use only the height required by its content.
-        // The page's outer ScrollView handles vertical scrolling.
-        rv.isNestedScrollingEnabled = false
-        rv.setPadding(0, 0, 0, dp(12))
-        rv.clipToPadding = false
-
-        addList(rv)
-
-        attachDrag(
-            rv,
-            list
-        ) {
-            store.saveCodes(list)
-        }
-    }
-
-    private inner class CodeAdapter(
-        val data: MutableList<CodeItem>
-    ) : RecyclerView.Adapter<VH>() {
-
-        override fun onCreateViewHolder(
-            p: ViewGroup,
-            t: Int
-        ) =
-            VH(codeRow())
-
-        override fun getItemCount() =
-            data.size
-
-        override fun onBindViewHolder(
-            h: VH,
-            pos: Int
-        ) {
-
-            val c =
-                data[pos]
-
-            h.title.text =
-                "▣  ${c.title}"
-
-            h.edit.text =
-                "✎ / 🗑"
-
-            h.edit.setOnClickListener {
-
-                val pop =
-                    PopupMenu(
-                        this@MainActivity,
-                        h.edit
-                    )
-
-                pop.menu.add("Edit")
-                pop.menu.add("Delete")
-
-                pop.setOnMenuItemClickListener {
-
-                    if (it.title == "Edit") {
-
-                        codeDialog(c)
-
-                    } else {
-
-                        data.remove(c)
-
-                        store.saveCodes(data)
-
-                        notifyDataSetChanged()
-                    }
-
-                    true
-                }
-
-                pop.show()
-            }
-
-            h.itemView.setOnClickListener {
-            
-                h.description.text =
-                    descriptionToSpanned(
-                        c.desc
-                    )
-            
-                h.code.text =
-                    highlightCode(
-                        c.code,
-                        c.lang
-                    )
-            
-                h.code.setTypeface(
-                    Typeface.MONOSPACE
-                )
-            
-                h.code.setTextIsSelectable(true)
-            
-                h.details.visibility =
-                    if (
-                        h.details.visibility ==
-                        View.VISIBLE
-                    )
-                        View.GONE
-                    else
-                        View.VISIBLE
-            }
-        }
-    }
-
-    private fun codeDialog(
-        old: CodeItem?
-    ) {
-
-        /*
-         * One vertical ScrollView belongs to the dialog.
-         *
-         * Title + description + language can therefore become as long as
-         * needed without hiding the Original Code field.
-         *
-         * The CodeEditText itself remains a fixed-height, independently
-         * scrollable editor.
-         */
-        val scroll =
-            ScrollView(this).apply {
-                isFillViewport = true
-                overScrollMode =
-                    View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            }
-
-        val box =
-            LinearLayout(this).apply {
-                orientation =
-                    LinearLayout.VERTICAL
-
-                setPadding(
-                    dp(8),
-                    0,
-                    dp(8),
-                    dp(8)
-                )
-            }
-
-        val title =
-            edit(
-                "Code Title",
-                old?.title ?: ""
-            )
-
-        val descEditor =
-            richDescriptionEditor(
-                old?.desc ?: "",
-                3
-            )
-
-        val spinner =
-            Spinner(this)
-
-        val langs =
-            arrayOf(
-                "Kotlin",
-                "Java",
-                "Python",
-                "HTML",
-                "CSS",
-                "JavaScript",
-                "C",
-                "C++",
-                "SQL",
-                "JSON",
-                "XML",
-                "Shell",
-                "Other"
-            )
-
-        spinner.adapter =
-            ArrayAdapter(
-                this,
-                android.R.layout.simple_spinner_dropdown_item,
-                langs
-            )
-
-        old?.let {
-
-            spinner.setSelection(
-                langs.indexOf(
-                    it.lang
-                ).coerceAtLeast(0)
-            )
-        }
-
-        val code =
-            CodeEditText(this)
-
-        code.language =
-            old?.lang ?: "Kotlin"
-
-        code.setText(
-            old?.code ?: ""
-        )
-
-        code.highlight()
-
-        spinner.onItemSelectedListener =
-            object : AdapterView.OnItemSelectedListener {
-
-                override fun onItemSelected(
-                    parent: AdapterView<*>?,
-                    view: View?,
-                    position: Int,
-                    id: Long
-                ) {
-                    code.language =
-                        langs[position]
-
-                    code.highlight()
-                }
-
-                override fun onNothingSelected(
-                    parent: AdapterView<*>?
-                ) {
-                }
-            }
-
-        code.minLines = 18
-
-        code.layoutParams =
-            LinearLayout.LayoutParams(
-                -1,
-                dp(360)
-            ).apply {
-                topMargin = dp(6)
-            }
-
-        box.addView(title)
-        box.addView(
-            descEditor.first
-        )
-        box.addView(spinner)
-        box.addView(code)
-
-        scroll.addView(
-            box,
-            ViewGroup.LayoutParams(
-                -1,
-                -2
-            )
-        )
-
-        val dialog =
-            AlertDialog.Builder(this)
-                .setTitle(
-                    if (old == null)
-                        "Write Code"
-                    else
-                        "Edit Code"
-                )
-                .setView(scroll)
-                .setPositiveButton("Save") { _, _ ->
-
-                    var name =
-                        title.text.toString()
-                            .trim()
-
-                    if (name.isBlank()) {
-
-                        name =
-                            descEditor.second.text
-                                .toString()
-                                .trim()
-                                .split(
-                                    Regex("\\s+")
-                                )
-                                .take(6)
-                                .joinToString(" ")
-                                .ifBlank {
-                                    "Untitled Code"
-                                }
-                    }
-
-                    val l =
-                        store.codes()
-
-                    if (old == null) {
-
-                        l.add(
-                            CodeItem(
-                                store.id("code"),
-                                name,
-                                spannedToDescription(
-                                    descEditor.second.text
-                                ),
-                                spinner.selectedItem.toString(),
-                                code.text.toString()
-                            )
-                        )
-
-                    } else {
-
-                        old.title = name
-
-                        old.desc =
-                            spannedToDescription(
-                                descEditor.second.text
-                            )
-
-                        old.lang =
-                            spinner.selectedItem
-                                .toString()
-
-                        old.code =
-                            code.text.toString()
-
-                        val idx =
-                            l.indexOfFirst {
-                                it.id == old.id
-                            }
-
-                        if (idx >= 0) {
-                            l[idx] = old
-                        }
-                    }
-
-                    store.saveCodes(l)
-
-                    codesPage()
-                }
-                .setNegativeButton(
-                    "Cancel",
-                    null
-                )
-                .create()
-
-        /*
-         * ADJUST_RESIZE prevents the keyboard from panning the entire
-         * dialog unpredictably. The dialog gets a smaller viewport and
-         * its ScrollView handles the content.
-         */
-        dialog.setOnShowListener {
-
-            dialog.window?.setSoftInputMode(
-                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-            )
-        }
-
-        /*
-         * When the user enters the Original Code field, make sure the
-         * dialog's OUTER scroll reaches the code editor. After that,
-         * CodeEditText controls its own scrolling.
-         */
-        code.setOnFocusChangeListener { _, hasFocus ->
-
-            if (hasFocus) {
-
-                scroll.post {
-                    scroll.fullScroll(
-                        View.FOCUS_DOWN
-                    )
-                }
-
-                scroll.postDelayed({
-
-                    scroll.fullScroll(
-                        View.FOCUS_DOWN
-                    )
-
-                }, 200)
-            }
-        }
-
-        dialog.show()
-    }
-
-    // --------------------------------------------------------
     // ACCOUNTS
     // --------------------------------------------------------
 
@@ -3528,43 +2437,287 @@ class MainActivity : Activity() {
     // FILES
     // --------------------------------------------------------
 
+    private var pendingFolderId =
+        0L
+
+    private val pendingFileUris =
+        mutableListOf<Uri>()
+
+    private var pendingFileIndex =
+        0
+
     private fun filesPage() {
 
         clear("My Files")
 
         sectionButton(
-            "Add File"
+            "Create Folder"
         ) {
-            fileTitleDialog()
+            folderDialog()
         }
 
-        val list =
-            store.files()
-
-        val rv =
-            FullHeightRecyclerView(this)
-
-        rv.layoutManager =
-            LinearLayoutManager(this)
-
-        val ad =
-            FileAdapter(list)
-
-        rv.adapter = ad
-
-        // Let the RecyclerView use only the height required by its content.
-        // The page's outer ScrollView handles vertical scrolling.
-        rv.isNestedScrollingEnabled = false
-        rv.setPadding(0, 0, 0, dp(12))
-        rv.clipToPadding = false
-
-        addList(rv)
-
-        attachDrag(
-            rv,
-            list
+        sectionButton(
+            "Upload File"
         ) {
-            store.saveFiles(list)
+            chooseUploadFolder()
+        }
+
+        val folders =
+            store.folders()
+
+        folders.forEach { folder ->
+
+            val folderBox =
+                LinearLayout(this).apply {
+                    orientation =
+                        LinearLayout.VERTICAL
+
+                    layoutParams =
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(
+                                dp(3),
+                                dp(5),
+                                dp(3),
+                                dp(5)
+                            )
+                        }
+                }
+
+            bgView(
+                folderBox,
+                Color.WHITE,
+                12f
+            )
+
+            (folderBox.background as? GradientDrawable)
+                ?.setStroke(
+                    dp(1),
+                    Color.BLACK
+                )
+
+            val folderTitle =
+                tv(
+                    "📁  ${folder.name}",
+                    16f,
+                    true
+                ).apply {
+                    setPadding(
+                        dp(12),
+                        0,
+                        dp(12),
+                        0
+                    )
+                    gravity =
+                        Gravity.CENTER_VERTICAL
+                }
+
+            folderBox.addView(
+                folderTitle,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(58)
+                )
+            )
+
+            val folderFiles =
+                store.files()
+                    .filter {
+                        it.folderId == folder.id
+                    }
+                    .toMutableList()
+
+            val folderContent =
+                LinearLayout(this).apply {
+                    orientation =
+                        LinearLayout.VERTICAL
+                }
+
+            if (folderFiles.isEmpty()) {
+
+                val empty =
+                    tv(
+                        "No files in this folder",
+                        14f,
+                        false
+                    ).apply {
+                        setPadding(
+                            dp(14),
+                            dp(4),
+                            dp(14),
+                            dp(14)
+                        )
+                    }
+
+                folderContent.addView(
+                    empty
+                )
+
+            } else {
+
+                val rv =
+                    FullHeightRecyclerView(this)
+
+                rv.layoutManager =
+                    LinearLayoutManager(this)
+
+                rv.adapter =
+                    FileAdapter(folderFiles)
+
+                rv.isNestedScrollingEnabled =
+                    false
+
+                rv.setPadding(
+                    0,
+                    0,
+                    0,
+                    dp(8)
+                )
+
+                rv.clipToPadding =
+                    false
+
+                folderContent.addView(
+                    rv,
+                    LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                    )
+                )
+
+                attachDrag(
+                    rv,
+                    folderFiles
+                ) {
+                    val all =
+                        store.files()
+
+                    val ids =
+                        folderFiles.map {
+                            it.id
+                        }.toHashSet()
+
+                    val reordered =
+                        folderFiles.toList()
+
+                    var index =
+                        0
+
+                    for (i in all.indices) {
+                        if (ids.contains(all[i].id)) {
+                            all[i] =
+                                reordered[index++]
+                        }
+                    }
+
+                    store.saveFiles(all)
+                }
+            }
+
+            folderBox.addView(
+                folderContent
+            )
+
+            folderTitle.setOnClickListener {
+
+                folderContent.visibility =
+                    if (
+                        folderContent.visibility ==
+                        View.VISIBLE
+                    )
+                        View.GONE
+                    else
+                        View.VISIBLE
+            }
+
+            content.addView(
+                folderBox
+            )
+        }
+
+        val rootFiles =
+            store.files()
+                .filter {
+                    it.folderId == 0L ||
+                    folders.none { f ->
+                        f.id == it.folderId
+                    }
+                }
+                .toMutableList()
+
+        if (rootFiles.isNotEmpty()) {
+
+            val heading =
+                tv(
+                    "Single Files",
+                    17f,
+                    true
+                ).apply {
+                    setPadding(
+                        dp(10),
+                        dp(12),
+                        dp(10),
+                        dp(4)
+                    )
+                }
+
+            content.addView(
+                heading
+            )
+
+            val rv =
+                FullHeightRecyclerView(this)
+
+            rv.layoutManager =
+                LinearLayoutManager(this)
+
+            rv.adapter =
+                FileAdapter(rootFiles)
+
+            rv.isNestedScrollingEnabled =
+                false
+
+            rv.setPadding(
+                0,
+                0,
+                0,
+                dp(12)
+            )
+
+            rv.clipToPadding =
+                false
+
+            addList(rv)
+
+            attachDrag(
+                rv,
+                rootFiles
+            ) {
+                val all =
+                    store.files()
+
+                val ids =
+                    rootFiles.map {
+                        it.id
+                    }.toHashSet()
+
+                val reordered =
+                    rootFiles.toList()
+
+                var index =
+                    0
+
+                for (i in all.indices) {
+                    if (ids.contains(all[i].id)) {
+                        all[i] =
+                            reordered[index++]
+                    }
+                }
+
+                store.saveFiles(all)
+            }
         }
     }
 
@@ -3605,39 +2758,107 @@ class MainActivity : Activity() {
         }
     }
 
-    private var pendingFileTitle =
-        ""
-
-    private fun fileTitleDialog() {
+    private fun folderDialog() {
 
         val e =
             edit(
-                "File Title"
+                "Folder Name"
             )
 
         AlertDialog.Builder(this)
-            .setTitle("Add File")
+            .setTitle(
+                "Create Folder"
+            )
             .setView(e)
             .setPositiveButton(
-                "Upload File"
+                "Create"
             ) { _, _ ->
 
-                pendingFileTitle =
+                val name =
                     e.text.toString()
+                        .trim()
 
-                startActivityForResult(
-                    Intent(
-                        Intent.ACTION_OPEN_DOCUMENT
-                    ).apply {
+                if (name.isBlank()) {
+                    toast(
+                        "Folder name cannot be empty"
+                    )
+                    return@setPositiveButton
+                }
 
-                        addCategory(
-                            Intent.CATEGORY_OPENABLE
+                val folders =
+                    store.folders()
+
+                if (
+                    folders.any {
+                        it.name.equals(
+                            name,
+                            ignoreCase = true
                         )
+                    }
+                ) {
+                    toast(
+                        "Folder already exists"
+                    )
+                    return@setPositiveButton
+                }
 
-                        type = "*/*"
+                folders.add(
+                    SavedFolder(
+                        store.id("folder"),
+                        name
+                    )
+                )
 
-                    },
-                    77
+                store.saveFolders(
+                    folders
+                )
+
+                filesPage()
+            }
+            .setNegativeButton(
+                "Cancel",
+                null
+            )
+            .show()
+    }
+
+    private fun chooseUploadFolder() {
+
+        val folders =
+            store.folders()
+
+        if (folders.isEmpty()) {
+            startFilePicker(0L)
+            return
+        }
+
+        val names =
+            mutableListOf(
+                "No Folder (Single File)"
+            )
+
+        names.addAll(
+            folders.map {
+                "📁  ${it.name}"
+            }
+        )
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "Upload File"
+            )
+            .setItems(
+                names.toTypedArray()
+            ) { _, which ->
+
+                val folderId =
+                    if (which == 0)
+                        0L
+                    else
+                        folders[which - 1].id
+
+                startFilePicker(
+                    folderId
                 )
             }
             .setNegativeButton(
@@ -3645,6 +2866,36 @@ class MainActivity : Activity() {
                 null
             )
             .show()
+    }
+
+    private fun startFilePicker(
+        folderId: Long
+    ) {
+
+        pendingFolderId =
+            folderId
+
+        pendingFileUris.clear()
+        pendingFileIndex = 0
+
+        startActivityForResult(
+            Intent(
+                Intent.ACTION_OPEN_DOCUMENT
+            ).apply {
+
+                addCategory(
+                    Intent.CATEGORY_OPENABLE
+                )
+
+                type = "*/*"
+
+                putExtra(
+                    Intent.EXTRA_ALLOW_MULTIPLE,
+                    true
+                )
+            },
+            77
+        )
     }
 
     override fun onActivityResult(
@@ -3661,7 +2912,8 @@ class MainActivity : Activity() {
 
         if (
             c != RESULT_OK ||
-            d?.data == null
+            d?.data == null &&
+            d?.clipData == null
         ) {
             return
         }
@@ -3670,19 +2922,43 @@ class MainActivity : Activity() {
 
             when (r) {
 
-                77 ->
-                    savePickedFile(
-                        d.data!!
-                    )
+                77 -> {
+
+                    pendingFileUris.clear()
+
+                    d?.clipData?.let {
+                        for (
+                            i in 0 until it.itemCount
+                        ) {
+                            pendingFileUris.add(
+                                it.getItemAt(i).uri
+                            )
+                        }
+                    }
+
+                    if (
+                        pendingFileUris.isEmpty()
+                    ) {
+                        d?.data?.let {
+                            pendingFileUris.add(
+                                it
+                            )
+                        }
+                    }
+
+                    pendingFileIndex = 0
+
+                    promptNextFileTitle()
+                }
 
                 88 ->
                     restoreData(
-                        d.data!!
+                        d!!.data!!
                     )
 
                 89 ->
                     exportData(
-                        d.data!!
+                        d!!.data!!
                     )
             }
 
@@ -3694,8 +2970,92 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun promptNextFileTitle() {
+
+        if (
+            pendingFileIndex >=
+            pendingFileUris.size
+        ) {
+
+            val count =
+                pendingFileUris.size
+
+            pendingFileUris.clear()
+            pendingFileIndex = 0
+
+            filesPage()
+
+            toast(
+                if (count == 1)
+                    "File uploaded"
+                else
+                    "$count files uploaded"
+            )
+
+            return
+        }
+
+        val uri =
+            pendingFileUris[
+                pendingFileIndex
+            ]
+
+        val displayName =
+            uri.lastPathSegment
+                ?.substringAfterLast('/')
+                ?.ifBlank {
+                    "File"
+                }
+                ?: "File"
+
+        val e =
+            edit(
+                "File Title"
+            )
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                "File Title " +
+                    "(${pendingFileIndex + 1}/" +
+                    "${pendingFileUris.size})"
+            )
+            .setView(e)
+            .setPositiveButton(
+                "Upload"
+            ) { _, _ ->
+
+                val title =
+                    e.text.toString()
+                        .trim()
+                        .ifBlank {
+                            displayName
+                        }
+
+                savePickedFile(
+                    uri,
+                    pendingFolderId,
+                    title
+                )
+
+                pendingFileIndex++
+
+                promptNextFileTitle()
+            }
+            .setNegativeButton(
+                "Cancel"
+            ) { _, _ ->
+
+                pendingFileUris.clear()
+                pendingFileIndex = 0
+                filesPage()
+            }
+            .show()
+    }
+
     private fun savePickedFile(
-        uri: Uri
+        uri: Uri,
+        folderId: Long,
+        title: String
     ) {
 
         val name =
@@ -3727,10 +3087,16 @@ class MainActivity : Activity() {
             .openInputStream(uri)
             .use { input ->
 
+                if (input == null) {
+                    throw IOException(
+                        "Unable to read selected file"
+                    )
+                }
+
                 FileOutputStream(out)
                     .use { output ->
 
-                        input?.copyTo(
+                        input.copyTo(
                             output
                         )
                     }
@@ -3746,19 +3112,15 @@ class MainActivity : Activity() {
         l.add(
             SavedFile(
                 store.id("file"),
-                pendingFileTitle
-                    .ifBlank {
-                        name
-                    },
+                title,
                 name,
                 out.absolutePath,
-                mime
+                mime,
+                folderId
             )
         )
 
         store.saveFiles(l)
-
-        filesPage()
     }
 
     private fun guessMime(
@@ -5034,19 +4396,6 @@ class MainActivity : Activity() {
             .attachToRecyclerView(rv)
     }
 
-    // --------------------------------------------------------
-    // DISPLAY SYNTAX HIGHLIGHTING
-    // --------------------------------------------------------
-
-    private fun highlightText(
-        s: String,
-        language: String = "Other"
-    ): CharSequence =
-        highlightCode(
-            s,
-            language
-        )
-
     private fun toast(
         s: String
     ) =
@@ -5069,15 +4418,8 @@ class MainActivity : Activity() {
         // Used by Notes / Accounts
         val detail =
             v.findViewById<TextView>(1003)
-    
-        // Used by My Coding
-        val details =
-            v.findViewById<LinearLayout>(1007)
-    
-        val description =
-            v.findViewById<TextView>(1005)
-    
-        val code =
-            v.findViewById<TextView>(1006)
+
+
+
     }
 }
