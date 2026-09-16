@@ -1870,13 +1870,19 @@ class MainActivity : Activity() {
         val t =
             tv("").apply {
                 id = 1001
+                // Title section is tall enough to clearly display at least
+                // three lines of a long title.
+                maxLines = 3
+                ellipsize = TextUtils.TruncateAt.END
+                gravity = Gravity.CENTER_VERTICAL
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
             }
 
         top.addView(
             t,
             LinearLayout.LayoutParams(
                 0,
-                dp(52),
+                dp(96),
                 1f
             )
         )
@@ -1966,13 +1972,19 @@ class MainActivity : Activity() {
         val t =
             tv("").apply {
                 id = 1001
+                // Title section is tall enough to clearly display at least
+                // three lines of a long title.
+                maxLines = 3
+                ellipsize = TextUtils.TruncateAt.END
+                gravity = Gravity.CENTER_VERTICAL
+                setTypeface(Typeface.DEFAULT, Typeface.BOLD)
             }
     
         top.addView(
             t,
             LinearLayout.LayoutParams(
                 0,
-                dp(52),
+                dp(96),
                 1f
             )
         )
