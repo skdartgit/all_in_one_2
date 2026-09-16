@@ -105,21 +105,129 @@ private class Store(
             .apply()
     }
 
+    /*
+     * ID generation must never reuse an ID that already exists in the
+     * restored/current data. This is especially important after restoring
+     * a backup because the old version did not restore the next-ID counters.
+     */
     private fun next(k: String): Long {
-        val n =
+
+        val a =
+            arr(k)
+
+        var maxId = 0L
+
+        for (i in 0 until a.length()) {
+            val id =
+                a.optJSONObject(i)
+                    ?.optLong("id", 0L)
+                    ?: 0L
+
+            if (id > maxId) {
+                maxId = id
+            }
+        }
+
+        val storedNext =
             p.getLong(
                 "next_$k",
                 1L
             )
 
+        val n =
+            maxOf(
+                storedNext,
+                maxId + 1L
+            )
+
         p.edit()
             .putLong(
                 "next_$k",
-                n + 1
+                n + 1L
             )
             .apply()
 
         return n
+    }
+
+    /*
+     * Older versions could create duplicate IDs after a restore because
+     * next-ID counters were not restored. Duplicate IDs can make an Edit
+     * operation update a different item and can make a newly-created Asset
+     * inherit the investments of an older Asset with the same ID.
+     *
+     * Keep the first occurrence of an ID unchanged and give every later
+     * duplicate a fresh ID. For Assets, investments remain attached to the
+     * first/original occurrence, preventing a newly-created duplicate Asset
+     * from displaying those investments.
+     */
+    fun repairIds() {
+
+        val keys =
+            arrayOf(
+                "notes",
+                "codes",
+                "accounts",
+                "files",
+                "assets",
+                "investments",
+                "angels"
+            )
+
+        keys.forEach { k ->
+
+            val a =
+                arr(k)
+
+            val used =
+                HashSet<Long>()
+
+            var nextId = 1L
+
+            for (i in 0 until a.length()) {
+
+                val o =
+                    a.optJSONObject(i)
+                        ?: continue
+
+                var id =
+                    o.optLong(
+                        "id",
+                        0L
+                    )
+
+                if (id <= 0L || used.contains(id)) {
+
+                    while (used.contains(nextId)) {
+                        nextId++
+                    }
+
+                    id = nextId
+
+                    o.put(
+                        "id",
+                        id
+                    )
+                }
+
+                used.add(id)
+
+                if (id >= nextId) {
+                    nextId = id + 1L
+                }
+            }
+
+            if (a.length() > 0) {
+                put(k, a)
+            }
+
+            p.edit()
+                .putLong(
+                    "next_$k",
+                    nextId
+                )
+                .apply()
+        }
     }
 
     fun pin(): String =
@@ -1294,6 +1402,10 @@ class MainActivity : Activity() {
 
         store =
             Store(this)
+
+        // Repair any duplicate IDs left by an older backup/restore and
+        // rebuild all next-ID counters before the user can edit/add data.
+        store.repairIds()
 
         showPin()
     }
@@ -4630,6 +4742,9 @@ class MainActivity : Activity() {
             JSONObject(s)
 
         store.restore(o)
+
+        // Rebuild unique IDs and next-ID counters from the restored data.
+        store.repairIds()
 
         filesPage()
 
