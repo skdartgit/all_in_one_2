@@ -782,6 +782,23 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout
     private lateinit var content: LinearLayout
 
+    // Reading-mode palette based on the supplied reference image.
+    // The warm off-white reduces the harshness of a pure white background,
+    // while the muted purple is used consistently for all buttons/header/footer.
+    private val readingBg =
+        Color.rgb(
+            255,
+            248,
+            230
+        )
+
+    private val buttonColor =
+        Color.rgb(
+            91,
+            75,
+            138
+        )
+
     private val text =
         Color.rgb(
             32,
@@ -838,7 +855,7 @@ class MainActivity : Activity() {
 
     private fun bgView(
         v: View,
-        color: Int = Color.WHITE,
+        color: Int = readingBg,
         r: Float = 14f
     ) {
 
@@ -887,11 +904,7 @@ class MainActivity : Activity() {
             background =
                 GradientDrawable().apply {
                     setColor(
-                        Color.rgb(
-                            63,
-                            86,
-                            211
-                        )
+                        buttonColor
                     )
                     cornerRadius =
                         dp(8).toFloat()
@@ -926,7 +939,7 @@ class MainActivity : Activity() {
 
             bgView(
                 this,
-                Color.WHITE,
+                readingBg,
                 10f
             )
 
@@ -955,6 +968,13 @@ class MainActivity : Activity() {
     ) {
 
         super.onCreate(b)
+
+        // Match the reading-mode palette in the system bars as well.
+        window.statusBarColor = readingBg
+        window.navigationBarColor = readingBg
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
+            View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
 
         store =
             Store(this)
@@ -1053,11 +1073,7 @@ class MainActivity : Activity() {
             FrameLayout(this)
 
         lay.setBackgroundColor(
-            Color.rgb(
-                245,
-                247,
-                250
-            )
+            readingBg
         )
 
         lay.addView(
@@ -1083,11 +1099,7 @@ class MainActivity : Activity() {
             LinearLayout.VERTICAL
 
         root.setBackgroundColor(
-            Color.rgb(
-                245,
-                247,
-                250
-            )
+            readingBg
         )
 
         val header =
@@ -1106,11 +1118,7 @@ class MainActivity : Activity() {
         header.background =
             GradientDrawable().apply {
                 setColor(
-                    Color.rgb(
-                        63,
-                        86,
-                        211
-                    )
+                    buttonColor
                 )
                 cornerRadius =
                     dp(8).toFloat()
@@ -1246,11 +1254,7 @@ class MainActivity : Activity() {
         foot.background =
             GradientDrawable().apply {
                 setColor(
-                    Color.rgb(
-                        63,
-                        86,
-                        211
-                    )
+                    buttonColor
                 )
                 cornerRadius =
                     dp(6).toFloat()
@@ -1513,7 +1517,7 @@ class MainActivity : Activity() {
 
         bgView(
             r,
-            Color.WHITE,
+            readingBg,
             12f
         )
 
@@ -2285,7 +2289,7 @@ class MainActivity : Activity() {
                     }
             }
 
-        bgView(r, Color.WHITE, 12f)
+        bgView(r, readingBg, 12f)
         (r.background as? GradientDrawable)?.setStroke(
             dp(1),
             Color.BLACK
@@ -2591,7 +2595,7 @@ class MainActivity : Activity() {
 
             bgView(
                 folderBox,
-                Color.WHITE,
+                readingBg,
                 12f
             )
 
@@ -3428,7 +3432,7 @@ class MainActivity : Activity() {
 
             bgView(
                 assetBox,
-                Color.WHITE,
+                readingBg,
                 12f
             )
 
